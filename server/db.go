@@ -27,7 +27,7 @@ CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_id);
 -- "Vertrag" is stored as "vertrage" and "vertrag*" reaches it.
 -- Changes here need a new ftsVersion in searchindex.go.
 CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
-	id UNINDEXED, title, body,
+	id UNINDEXED, title, description, body,
 	tokenize = "unicode61 remove_diacritics 2"
 );
 -- Passages of a page (W110): the search unit below the page. Hangs off pages
@@ -38,11 +38,26 @@ CREATE TABLE IF NOT EXISTS page_chunks (
 	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
 	workspace_id TEXT NOT NULL DEFAULT '',
 	ord INTEGER NOT NULL DEFAULT 0,
+	kind TEXT NOT NULL DEFAULT 'body' CHECK (kind IN ('body', 'description')),
 	heading TEXT NOT NULL DEFAULT '',
 	text TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chunk_page ON page_chunks(page_id);
 CREATE INDEX IF NOT EXISTS idx_chunk_ws ON page_chunks(workspace_id);
+-- Embeddings are derived from page_chunks.text and can be dropped and rebuilt.
+-- The model signature is part of the key so vectors from different models never
+-- share a cache row, even when they happen to use the same dimension.
+CREATE TABLE IF NOT EXISTS chunk_embeddings (
+	chunk_id TEXT NOT NULL REFERENCES page_chunks(id) ON DELETE CASCADE,
+	model_signature TEXT NOT NULL,
+	content_hash BLOB NOT NULL,
+	dimension INTEGER NOT NULL,
+	serialization_format TEXT NOT NULL,
+	vector BLOB NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (chunk_id, model_signature)
+);
+CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_model ON chunk_embeddings(model_signature);
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
 	chunk_id UNINDEXED, title, heading, text,
 	tokenize = "unicode61 remove_diacritics 2"
@@ -402,6 +417,9 @@ func openDB(path string) (*sql.DB, error) {
 	// Optional Notion-style page description (shown under the title, toggleable).
 	if err := ensureColumn(db, "pages", "description", `description TEXT NOT NULL DEFAULT ''`); err != nil {
 		return nil, fmt.Errorf("migrate pages.description: %w", err)
+	}
+	if err := ensureColumn(db, "page_chunks", "kind", `kind TEXT NOT NULL DEFAULT 'body' CHECK (kind IN ('body', 'description'))`); err != nil {
+		return nil, fmt.Errorf("migrate page_chunks.kind: %w", err)
 	}
 	// Workspace icon (emoji) + image (uploaded logo URL) for the workspace switcher.
 	if err := ensureColumn(db, "workspaces", "icon", `icon TEXT NOT NULL DEFAULT ''`); err != nil {

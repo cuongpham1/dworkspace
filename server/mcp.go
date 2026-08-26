@@ -124,7 +124,7 @@ var mcpTools = []map[string]any{
 				"icon":         map[string]any{"type": "string", "description": "Optional emoji, \"lucide:Name\", \"mdi:Name\" or image URL"},
 				"properties":   map[string]any{"type": "object", "description": "Typed property values when creating a database row — same shape as set_properties. Call get_collection first for property ids."},
 				"cover":        map[string]any{"type": "string", "description": coverHint},
-				"description":  map[string]any{"type": "string", "description": "Optional one-line summary, shown under the title."},
+				"description":  map[string]any{"type": "string", "description": "Optional semantic abstract of a few hundred words, shown under the title."},
 				"tags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags. Call list with kind=\"tags\" first and reuse what exists instead of inventing near-duplicates."},
 			},
 			"required": []string{"title"}},

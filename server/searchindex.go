@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"log"
 	"strings"
 	"unicode"
@@ -36,7 +37,7 @@ import (
 
 // ftsVersion is the version this build expects. Raise it whenever the
 // tokenizer line or the column layout changes.
-const ftsVersion = "3"
+const ftsVersion = "4"
 
 // foldQuery folds a search term exactly the way the index does.
 //
@@ -176,12 +177,14 @@ func (s *Server) migrateSearchIndex() error {
 	if _, err := s.db.Exec(`DROP TABLE IF EXISTS pages_fts`); err != nil {
 		return err
 	}
-	// Version 3: the passages join in. Both indexes are filled by reindexPage,
-	// so emptying them is enough.
-	s.db.Exec(`DELETE FROM chunks_fts`)
-	s.db.Exec(`DELETE FROM page_chunks`)
+	if _, err := s.db.Exec(`DELETE FROM chunks_fts`); err != nil {
+		return fmt.Errorf("clear chunks FTS: %w", err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM page_chunks`); err != nil {
+		return fmt.Errorf("clear page chunks: %w", err)
+	}
 	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE pages_fts USING fts5(
-		id UNINDEXED, title, body,
+		id UNINDEXED, title, description, body,
 		tokenize = "unicode61 remove_diacritics 2"
 	)`); err != nil {
 		return err
@@ -197,9 +200,15 @@ func (s *Server) migrateSearchIndex() error {
 	var ids []string
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return fmt.Errorf("read pages for search index rebuild: %w", err)
 		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("read pages for search index rebuild: %w", err)
 	}
 	rows.Close()
 
@@ -210,9 +219,12 @@ func (s *Server) migrateSearchIndex() error {
 		}
 	}
 	if failed > 0 {
-		log.Printf("search index: %d of %d pages could not be indexed", failed, len(ids))
+		return fmt.Errorf("search index rebuild: %d of %d pages could not be indexed", failed, len(ids))
 	}
-	s.setSetting("fts_version", ftsVersion)
+	if _, err := s.db.Exec(`INSERT INTO app_settings (key, value) VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, "fts_version", ftsVersion); err != nil {
+		return fmt.Errorf("record search index version: %w", err)
+	}
 	log.Printf("search index: rebuilt (version %s, %d pages)", ftsVersion, len(ids)-failed)
 	return nil
 }

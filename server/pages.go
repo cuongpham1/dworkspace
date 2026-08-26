@@ -404,7 +404,7 @@ func (s *Server) handleUpdatePage(w http.ResponseWriter, r *http.Request) {
 	// A mutation to a trashed page is almost always a stale write racing a
 	// delete; reject it so a concurrent edit can't resurrect on restore.
 	// (Position-only writes are allowed so trash housekeeping still works.)
-	if body.Title != nil || body.Icon != nil || body.Cover != nil ||
+	if body.Title != nil || body.Icon != nil || body.Cover != nil || body.Description != nil ||
 		len(body.Content) > 0 || len(body.Props) > 0 || len(body.PropsPatch) > 0 {
 		var trashed sql.NullString
 		if err := s.db.QueryRow(`SELECT trashed_at FROM pages WHERE id = ?`, id).Scan(&trashed); err == sql.ErrNoRows {
@@ -470,12 +470,8 @@ func (s *Server) handleUpdatePage(w http.ResponseWriter, r *http.Request) {
 		metaChanged = true
 	}
 	if body.Description != nil {
-		d := *body.Description
-		if len([]rune(d)) > 2000 {
-			d = string([]rune(d)[:2000])
-		}
 		sets = append(sets, "description = ?")
-		args = append(args, d)
+		args = append(args, *body.Description)
 		metaChanged = true
 	}
 	if len(body.Content) > 0 {
@@ -643,7 +639,7 @@ func (s *Server) handleUpdatePage(w http.ResponseWriter, r *http.Request) {
 		u := requestUser(r)
 		s.auditChanges("human", u.ID, u.Name, "set_properties", id, s.pageWorkspace(id), "", auditProps)
 	}
-	if body.Title != nil || len(body.Content) > 0 || len(body.Props) > 0 {
+	if body.Title != nil || body.Description != nil || len(body.Content) > 0 || len(body.Props) > 0 {
 		if err := s.reindexPage(id); err != nil {
 			httpError(w, 500, err.Error())
 			return
@@ -753,9 +749,9 @@ func (s *Server) reindexPage(id string) error {
 	if _, err := s.db.Exec(`DELETE FROM pages_fts WHERE id = ?`, id); err != nil {
 		return err
 	}
-	var title, content string
+	var title, description, content string
 	var trashedAt sql.NullString
-	err := s.db.QueryRow(`SELECT title, content, trashed_at FROM pages WHERE id = ?`, id).Scan(&title, &content, &trashedAt)
+	err := s.db.QueryRow(`SELECT title, description, content, trashed_at FROM pages WHERE id = ?`, id).Scan(&title, &description, &content, &trashedAt)
 	if err == sql.ErrNoRows {
 		return nil
 	}
@@ -770,8 +766,7 @@ func (s *Server) reindexPage(id string) error {
 	if trashedAt.Valid {
 		// In the trash: clear the passages, or the page keeps turning up in
 		// the passage-based search.
-		s.reindexChunks(id, "", "", nil, true)
-		return nil
+		return s.reindexChunks(pageChunkIndex{pageID: id, trashed: true})
 	}
 	// Refresh the notes-list preview (snippet + first image) alongside the index.
 	sn, th := extractSnippetAndThumb([]byte(content))
@@ -794,17 +789,22 @@ func (s *Server) reindexPage(id string) error {
 	// Strip the snippet highlight markers so page content can never inject
 	// fake <mark> tags into search results.
 	clean := strings.NewReplacer("\x01", "", "\x02", "")
-	if _, err := s.db.Exec(`INSERT INTO pages_fts (id, title, body) VALUES (?, ?, ?)`,
-		id, clean.Replace(title), clean.Replace(body)); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO pages_fts (id, title, description, body) VALUES (?, ?, ?, ?)`,
+		id, clean.Replace(title), clean.Replace(description), clean.Replace(body)); err != nil {
 		return err
 	}
-	// Passages in the same breath (see chunks.go). A failure here may not make the
-	// page indexing fail — the full-text search is the foundation, the passages
-	// are the refinement.
 	var wsID string
-	s.db.QueryRow(`SELECT workspace_id FROM pages WHERE id = ?`, id).Scan(&wsID)
-	if err := s.reindexChunks(id, wsID, clean.Replace(title), []byte(content), false); err != nil {
-		log.Printf("reindexChunks %s: %v", id, err)
+	if err := s.db.QueryRow(`SELECT workspace_id FROM pages WHERE id = ?`, id).Scan(&wsID); err != nil {
+		return err
+	}
+	if err := s.reindexChunks(pageChunkIndex{
+		pageID:      id,
+		workspaceID: wsID,
+		title:       clean.Replace(title),
+		description: clean.Replace(description),
+		content:     []byte(content),
+	}); err != nil {
+		return fmt.Errorf("reindex chunks %s: %w", id, err)
 	}
 	return nil
 }
@@ -1112,10 +1112,10 @@ func (s *Server) searchPagesFallback(userID, match string, ws []string, want int
 	for offset, round := 0, 0; len(out) < want && round < 8; round++ {
 		qArgs := append([]any{}, args...)
 		rows, err := s.db.Query(`
-			SELECT p.id, p.title, p.icon, snippet(pages_fts, 2, char(1), char(2), '…', 14)
+			SELECT p.id, p.title, p.icon, snippet(pages_fts, -1, char(1), char(2), '…', 14)
 			FROM pages_fts JOIN pages p ON p.id = pages_fts.id
 			WHERE pages_fts MATCH ? AND p.trashed_at IS NULL AND p.workspace_id IN (`+placeholders(len(ws))+`)
-			ORDER BY bm25(pages_fts, 0.0, 5.0, 1.0)
+			ORDER BY bm25(pages_fts, 0.0, 5.0, 3.0, 1.0)
 			LIMIT 60 OFFSET `+strconv.Itoa(offset), qArgs...)
 		if err != nil {
 			log.Printf("searchPagesFallback: %v", err)

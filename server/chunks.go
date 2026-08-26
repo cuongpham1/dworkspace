@@ -25,6 +25,9 @@ import (
 // paragraph without loading the page.
 
 const (
+	chunkKindBody        = "body"
+	chunkKindDescription = "description"
+
 	// Target size of a passage. Big enough for one thought, small enough that a
 	// hit still says something.
 	chunkTarget = 700
@@ -35,6 +38,7 @@ const (
 
 type pageChunk struct {
 	Ord     int
+	Kind    string
 	Heading string // heading path, e.g. "Verträge › Kündigung" (i18n-ok: example)
 	Text    string
 }
@@ -56,7 +60,7 @@ func chunkContent(raw []byte) []pageChunk {
 		if t == "" {
 			return
 		}
-		out = append(out, pageChunk{Ord: len(out), Heading: bufHeading, Text: t})
+		out = append(out, pageChunk{Ord: len(out), Kind: chunkKindBody, Heading: bufHeading, Text: t})
 	}
 
 	var walk func(bs []mdBlock)
@@ -151,44 +155,63 @@ func blockPlainText(blk mdBlock) string {
 	return strings.TrimSpace(b.String())
 }
 
+type pageChunkIndex struct {
+	pageID, workspaceID, title, description string
+	content                                 []byte
+	trashed                                 bool
+}
+
 // reindexChunks rewrites the passages of a page.
 //
 // Runs in the same breath as reindexPage. The delete path needs nothing of its
 // own: page_chunks hangs off pages by foreign key, and chunks_fts is carried
 // along here (a virtual table knows no cascade).
-func (s *Server) reindexChunks(pageID, workspaceID, title string, content []byte, trashed bool) error {
-	if _, err := s.db.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
-		(SELECT id FROM page_chunks WHERE page_id = ?)`, pageID); err != nil {
+func (s *Server) reindexChunks(index pageChunkIndex) error {
+	tx, err := s.db.Begin()
+	if err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`DELETE FROM page_chunks WHERE page_id = ?`, pageID); err != nil {
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
+		(SELECT id FROM page_chunks WHERE page_id = ?)`, index.pageID); err != nil {
 		return err
 	}
-	if trashed {
-		return nil
+	if _, err := tx.Exec(`DELETE FROM page_chunks WHERE page_id = ?`, index.pageID); err != nil {
+		return err
 	}
-	chunks := chunkContent(content)
+	if index.trashed {
+		return tx.Commit()
+	}
+	chunks := chunkContent(index.content)
+	descriptionText := strings.TrimSpace(index.description)
+	if descriptionText != "" {
+		titleText := strings.TrimSpace(index.title)
+		if titleText != "" {
+			descriptionText = titleText + "\n" + descriptionText
+		}
+		chunks = append([]pageChunk{{Ord: 0, Kind: chunkKindDescription, Text: descriptionText}}, chunks...)
+	}
 	if len(chunks) == 0 {
 		// An empty page still gets one passage from its title, otherwise it
 		// disappears from the passage-based search.
-		if strings.TrimSpace(title) == "" {
-			return nil
+		if strings.TrimSpace(index.title) == "" {
+			return tx.Commit()
 		}
-		chunks = []pageChunk{{Ord: 0, Text: title}}
+		chunks = []pageChunk{{Ord: 0, Kind: chunkKindBody, Text: index.title}}
 	}
 	for _, c := range chunks {
 		id := newID()
-		if _, err := s.db.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, heading, text)
-			VALUES (?, ?, ?, ?, ?, ?)`, id, pageID, workspaceID, c.Ord, c.Heading, c.Text); err != nil {
+		if _, err := tx.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, kind, heading, text)
+			VALUES (?, ?, ?, ?, ?, ?, ?)`, id, index.pageID, index.workspaceID, c.Ord, c.Kind, c.Heading, c.Text); err != nil {
 			return err
 		}
 		// The title goes into every passage: otherwise a two-word German query
 		// finds nothing when one word is in the title and the other in the
 		// paragraph — i18n-ok: "Vertrag Kündigung" is the example that showed it.
-		if _, err := s.db.Exec(`INSERT INTO chunks_fts (chunk_id, title, heading, text) VALUES (?, ?, ?, ?)`,
-			id, title, c.Heading, c.Text); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chunks_fts (chunk_id, title, heading, text) VALUES (?, ?, ?, ?)`,
+			id, index.title, c.Heading, c.Text); err != nil {
 			return err
 		}
 	}
-	return nil
+	return tx.Commit()
 }
