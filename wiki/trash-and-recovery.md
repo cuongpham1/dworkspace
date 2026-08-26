@@ -1,6 +1,6 @@
 # Trash and recovery
 
-No page in salt.md is deleted by clicking one button. **Move to trash** takes a
+No page in dworkspace is deleted by clicking one button. **Move to trash** takes a
 page and everything under it out of the way; the trash sits at the bottom of the
 sidebar and gives it back. Permanent deletion is a second, separate act — and
 after a while the trash performs that act itself, which is the part most people
@@ -38,7 +38,7 @@ Three things happen at once:
 - **Live editors are disconnected.** Anyone with that page (or one of its
   sub-pages) open in an editor is dropped from the shared document.
 - **You are moved off it, and its tab closes.** If you were looking at the page,
-  salt.md switches to another open tab, or to a page in the tree. The tab of a
+  dworkspace switches to another open tab, or to a page in the tree. The tab of a
   trashed page is removed from the tab bar in every open browser.
 
 Other people's browsers follow along without a reload: the sidebar, boards and
@@ -175,8 +175,8 @@ The only route back from a permanent deletion is a backup. Instance settings →
 **Maintenance** → **Download backup (.tar.gz)** takes the whole database and
 every upload, and a backup contains the trash as well as the live pages. The
 Maintenance panel is open to instance admins only, and it names both halves of
-the route: putting an archive back is `./salt restore backup.tar.gz` on the
-server, and `./salt backup` writes the same archive from cron without a browser.
+the route: putting an archive back is `./dworkspace restore backup.tar.gz` on the
+server, and `./dworkspace backup` writes the same archive from cron without a browser.
 See [Self-hosting](self-hosting.md).
 
 ### The trash empties itself
@@ -197,7 +197,7 @@ days; **0 switches the sweep off entirely**, and then nothing ever leaves the
 trash on its own. Instance settings → **Maintenance** shows the live figure as
 *Pages (trashed)*.
 
-Self-hosters can set the same number with the `SALT_TRASH_DAYS` environment
+Self-hosters can set the same number with the `DWORKSPACE_TRASH_DAYS` environment
 variable, which is read afresh at every sweep — change it and restart, and the
 next sweep uses it. The admin setting wins over it, and there is a trap in that:
 the settings dialog sends the retention value with every save, so the first time

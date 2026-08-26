@@ -3,7 +3,7 @@
 Running the instance: naming it, deciding who may get an account, inviting
 people, managing accounts through their whole life, cleaning up workspaces
 nobody is left in charge of, and taking a backup. This page is for the person
-who installed salt.md and for anyone they made an instance admin. It describes
+who installed dworkspace and for anyone they made an instance admin. It describes
 what the dialogs actually do — the role model behind them is in
 [Permissions](permissions.md).
 
@@ -71,11 +71,11 @@ removing a webhook. **Cancel** therefore does not undo those.
 browser tab title *of that page*, and names the instance on the approval screen
 an agent sees when it signs in ([Agent access](agent-access.md)). It is not the
 title of the application in general: once you are inside, the tab reads
-*salt.md* again, because the name is fetched by the sign-in screen and nothing
-else sets it. Left empty, the sign-in page says *salt.md*. The placeholder in
+*dworkspace* again, because the name is fetched by the sign-in screen and nothing
+else sets it. Left empty, the sign-in page says *dworkspace*. The placeholder in
 the field is *e.g. Acme Notes* — pick your own name, not that one.
 
-There is **no instance logo**. The salt.md mark above the sign-in heading is
+There is **no instance logo**. The dworkspace mark above the sign-in heading is
 fixed; the picture you can change is per workspace, in
 [Workspace settings](workspaces.md).
 
@@ -96,7 +96,7 @@ settings"* — worth knowing if somebody quotes a message at you. See
 **The trash setting** is swept by a background pass every 30 minutes: pages
 trashed longer ago than the limit are deleted for good. `0` disables the sweep
 and the trash keeps everything. Without a stored setting the environment
-variable `SALT_TRASH_DAYS` decides, and failing that 30 days. See
+variable `DWORKSPACE_TRASH_DAYS` decides, and failing that 30 days. See
 [Trash and recovery](trash-and-recovery.md).
 
 **The session length** applies to sessions created from then on — it is both the
@@ -174,8 +174,8 @@ Four routes to a public address, in the order the tab lists them:
 1. **Start quick tunnel** — a temporary `trycloudflare.com` address that changes
    on every start. cloudflared is downloaded the first time.
 2. A permanent Cloudflare tunnel: paste the token from the dashboard, press
-   **Connect**. salt.md keeps it running across restarts.
-3. Built-in HTTPS: a domain field plus an **Active** switch — salt.md fetches
+   **Connect**. dworkspace keeps it running across restarts.
+3. Built-in HTTPS: a domain field plus an **Active** switch — dworkspace fetches
    its own Let's Encrypt certificate and listens on 80 and 443.
 4. Your own reverse proxy: set **Internal address of the instance (upstream)**
    and copy one of the three generated blocks (Caddy, Cloudflare Tunnel, nginx).
@@ -197,7 +197,7 @@ The message names the page and never carries its content.
 Enter the **Address to call**, tick which of the three events you want under
 **When should we call?** (`page.created`, `page.updated`, `page.trashed`) and
 press **Add**. The signing secret appears once, under *Copy this secret now — it
-is shown only once.* — your receiver uses it to check the `X-Salt-Signature`
+is shown only once.* — your receiver uses it to check the `X-Dworkspace-Signature`
 header. Dismiss it with **I have it** and it is gone.
 
 Under **Configured**, each hook shows its address, its events and either
@@ -224,7 +224,7 @@ deviate for a single document, and that choice travels in the link.
 | **Links as links, not as plain text** | on | Off prints them in black without an underline, which is what a link is worth on paper |
 | **Landscape** | off | The sheet turned, for documents made of wide tables |
 
-**salt.md lays the pages out itself.** The document is cut into A4 sheets before
+**dworkspace lays the pages out itself.** The document is cut into A4 sheets before
 printing and the browser only puts them on paper. Three things follow, and they
 are the whole reason it works this way:
 
@@ -268,14 +268,14 @@ the admin flag.
 Restoring, and taking backups on a schedule, happen on the server:
 
 ```
-./salt backup                    # writes salt-backup.tar.gz — put this in cron
-./salt restore backup.tar.gz     # unpacks the archive into the data directory
+./dworkspace backup                    # writes dworkspace-backup.tar.gz — put this in cron
+./dworkspace restore backup.tar.gz     # unpacks the archive into the data directory
 ```
 
-`salt backup` is safe against a running instance. `salt restore` is not a wipe:
+`dworkspace backup` is safe against a running instance. `dworkspace restore` is not a wipe:
 it unpacks the archive over whatever is in the data directory, so anything the
 archive does not contain stays behind. And it refuses outright if a database is
-already there — *"…/salt.db already exists; set SALT_RESTORE_FORCE=1 to
+already there — *"…/dworkspace.db already exists; set DWORKSPACE_RESTORE_FORCE=1 to
 overwrite"*. Restore into an empty directory, or set that variable deliberately.
 The full procedure is in [Self-hosting](self-hosting.md).
 
@@ -387,7 +387,7 @@ anywhere, an admin only where they are a workspace admin themselves. A row you
 are not entitled to grant is silently skipped rather than refused, so check the
 result if you were assigning outside your own workspaces.
 
-There is **no password-reset email** in salt.md, and no field in this dialog for
+There is **no password-reset email** in dworkspace, and no field in this dialog for
 setting somebody else's password. What an admin can change about another account
 is its **name, colour and picture**; the **password and the email address** are
 the owner's alone — *"Only the owner can change another account's password or
@@ -464,7 +464,7 @@ appointing a successor possible.
 
 ## Deleting an account
 
-Owner only, and irreversible. Before the confirmation appears, salt.md works out
+Owner only, and irreversible. Before the confirmation appears, dworkspace works out
 what hangs off the account (`/api/users/{id}/deletion-impact`) and puts it in the
 question. The lines you may see:
 

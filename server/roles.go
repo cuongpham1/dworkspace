@@ -79,7 +79,7 @@ func (s *Server) migrateOrg() error {
 		orgID = newID()
 		name := s.setting("instance_name", "")
 		if strings.TrimSpace(name) == "" {
-			name = "salt.md"
+			name = "dworkspace"
 		}
 		if _, err := s.db.Exec(`INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)`,
 			orgID, name, now()); err != nil {

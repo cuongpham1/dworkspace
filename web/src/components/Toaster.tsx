@@ -18,8 +18,8 @@ export default function Toaster() {
       setToasts((t) => [...t, { id, message }]);
       window.setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
     };
-    window.addEventListener('salt:toast', onToast);
-    return () => window.removeEventListener('salt:toast', onToast);
+    window.addEventListener('dworkspace:toast', onToast);
+    return () => window.removeEventListener('dworkspace:toast', onToast);
   }, []);
 
   // Toasts are the app's only failure feedback, so the region must announce to

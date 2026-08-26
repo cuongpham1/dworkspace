@@ -30,7 +30,7 @@ export function confirm(
 ): Promise<boolean> {
   return new Promise((resolve) => {
     window.dispatchEvent(
-      new CustomEvent('salt:dialog', { detail: { kind: 'confirm', message, ...opts, resolve } }),
+      new CustomEvent('dworkspace:dialog', { detail: { kind: 'confirm', message, ...opts, resolve } }),
     );
   });
 }
@@ -41,7 +41,7 @@ export function promptText(
 ): Promise<string | null> {
   return new Promise((resolve) => {
     window.dispatchEvent(
-      new CustomEvent('salt:dialog', { detail: { kind: 'prompt', message, ...opts, resolve } }),
+      new CustomEvent('dworkspace:dialog', { detail: { kind: 'prompt', message, ...opts, resolve } }),
     );
   });
 }
@@ -57,8 +57,8 @@ export function DialogHost() {
       setReq(detail);
       setValue(detail.kind === 'prompt' ? detail.defaultValue ?? '' : '');
     };
-    window.addEventListener('salt:dialog', onReq);
-    return () => window.removeEventListener('salt:dialog', onReq);
+    window.addEventListener('dworkspace:dialog', onReq);
+    return () => window.removeEventListener('dworkspace:dialog', onReq);
   }, []);
 
   useEffect(() => {

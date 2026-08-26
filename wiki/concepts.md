@@ -1,6 +1,6 @@
 # Concepts
 
-salt.md is built out of about fifteen nouns, and most questions about how it
+dworkspace is built out of about fifteen nouns, and most questions about how it
 behaves turn out to be questions about which noun owns which. This page defines
 every one of them: what it is, where it lives, what it can contain, and what
 happens to it when the thing above it goes away. Each section points at the page
@@ -31,7 +31,7 @@ the handbook above it.
 
 ## Instance
 
-One running copy of salt.md — one binary, one database file, one address. The
+One running copy of dworkspace — one binary, one database file, one address. The
 whole of the tree above lives inside it.
 
 Internally the instance is recorded as an **organisation**, which exists so that
@@ -295,7 +295,7 @@ This is not the same thing as a **note** — see [Agent](#agent) below and
 
 The body of a page is a list of blocks: paragraph, heading, bulleted list,
 numbered list, check list, toggle list, quote, code, table, divider, image,
-video, audio, file — and blocks can be laid out in columns. salt.md adds four
+video, audio, file — and blocks can be laid out in columns. dworkspace adds four
 of its own, offered in the `/` menu as **Callout**, **Bookmark / Embed**,
 **Table of contents** and **Embed a collection**. Type `/` to insert one; drag a
 block by its handle to move it.
@@ -396,7 +396,7 @@ See [Views](views.md) and [Forms](forms.md).
 
 ## The three kinds of connection
 
-salt.md keeps them apart because they answer different questions.
+dworkspace keeps them apart because they answer different questions.
 
 1. **Filed under** — a page's parent. Structure. This is what the sidebar and
    the tree show, and what the graph draws thin.

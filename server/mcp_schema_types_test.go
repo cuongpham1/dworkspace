@@ -92,7 +92,7 @@ func TestUpdateSchemaCreatesAWorkingBackrelation(t *testing.T) {
 	}
 
 	// And it actually answers: two tasks, one of them done.
-	sysRow := s.makeRow(t, ws, uid, systems, "Salt", `{}`)
+	sysRow := s.makeRow(t, ws, uid, systems, "Dworkspace", `{}`)
 	s.makeRow(t, ws, uid, tasks, "A", `{"system":["`+sysRow+`"],"status":"done"}`)
 	s.makeRow(t, ws, uid, tasks, "B", `{"system":["`+sysRow+`"],"status":"open"}`)
 

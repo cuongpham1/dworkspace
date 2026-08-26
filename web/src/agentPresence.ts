@@ -50,13 +50,13 @@ export function useAgentPresence(pageId?: string): AgentWork[] {
     listeners.add(onChange);
     void load();
     const onEvent = () => void load();
-    window.addEventListener('salt:presence', onEvent);
+    window.addEventListener('dworkspace:presence', onEvent);
     // A minute tick, so "last seen 4 min ago" ages on screen without anyone
     // writing anything. Cheap: it re-renders a badge, it does not fetch.
     const tick = window.setInterval(onChange, 60_000);
     return () => {
       listeners.delete(onChange);
-      window.removeEventListener('salt:presence', onEvent);
+      window.removeEventListener('dworkspace:presence', onEvent);
       window.clearInterval(tick);
     };
   }, []);

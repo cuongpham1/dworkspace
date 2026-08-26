@@ -8,7 +8,7 @@ import (
 
 // Agent parity, part 3: history, comments, graph.
 //
-// This is the part Notion structurally cannot offer: Salt keeps revisions and
+// This is the part Notion structurally cannot offer: Dworkspace keeps revisions and
 // an audit trail that tells human and agent apart. An agent that can follow
 // and undo its own changes is a different colleague from one that writes
 // blind.

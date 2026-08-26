@@ -403,7 +403,7 @@ something you will not get, down to the real colours of the select options. The
 **Empty workspace** card and the copies of your own workspaces carry no counts —
 there is nothing to count that the card does not already say.
 
-The blueprints ship inside the salt.md binary. A fresh self-hosted install has
+The blueprints ship inside the dworkspace binary. A fresh self-hosted install has
 the shelf immediately, with no network call and no sign-up anywhere. You do have
 to be signed in to see it.
 

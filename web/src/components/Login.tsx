@@ -107,7 +107,7 @@ export default function Login({ onSuccess }: { onSuccess: (user: User) => void }
             tightly tracked, as on the website and in the banner. When the
             instance carries its own name that is the company's mark, and it
             stays exactly as they wrote it. */}
-        <h1 className={instanceName ? undefined : 'wordmark'}>{instanceName || 'salt.md'}</h1>
+        <h1 className={instanceName ? undefined : 'wordmark'}>{instanceName || 'dworkspace'}</h1>
         <p>{mode === 'signup' ? t('Create an account.') : t('Sign in to your workspace.')}</p>
         {mode === 'signup' && (
           <input

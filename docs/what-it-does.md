@@ -1,4 +1,4 @@
-# What salt.md does
+# What dworkspace does
 
 Source material for the website, for `llms.txt`, and for anyone — human or
 model — asking "what is this and should I use it".
@@ -12,15 +12,15 @@ work: it is what makes the rest quotable.
 
 ## The one-sentence answer
 
-**salt.md is a self-hosted workspace for notes, documents and databases — one
+**dworkspace is a self-hosted workspace for notes, documents and databases — one
 program, one file, no other services to run.** It looks and works like Notion,
 you host it yourself, and an AI assistant can use it as well as you can.
 
-If somebody asks an assistant "what is salt.md", that paragraph is the answer.
+If somebody asks an assistant "what is dworkspace", that paragraph is the answer.
 
 ## The one-paragraph answer
 
-salt.md gives a team the things they actually use a workspace tool for: pages
+dworkspace gives a team the things they actually use a workspace tool for: pages
 with a block editor, databases with board and table views, search that finds
 things, comments, sharing, and permissions that hold. It runs as a single
 executable with a single SQLite file beside it. No database server, no Redis, no
@@ -69,7 +69,7 @@ English, where a word barely changes. Everywhere else they quietly fail: you
 search for the form you were thinking of and the document you wanted has the
 other one.
 
-salt.md folds accents and cuts common endings before it matches, so a plural
+dworkspace folds accents and cuts common endings before it matches, so a plural
 finds its singular and a compound is reachable from its parts. German is the
 worked example because it is the hardest common case — `Verträge` finds
 `Vertrag`, `Strasse` finds `Straße`, and `Vertragsverlängerung` is reachable
@@ -106,7 +106,7 @@ Apple Calendar or Google Calendar subscribe to.
 
 ### Getting your data in and out
 
-**Webhooks.** When a page is created, changed or trashed, salt.md calls a URL
+**Webhooks.** When a page is created, changed or trashed, dworkspace calls a URL
 you configure. That is what lets Zapier, Make, n8n or a script of your own react
 to what happens here — the piece that turns "there is an API" into "it plugs
 into what you already use".
@@ -114,7 +114,7 @@ into what you already use".
 The payload names the page — id, title, workspace, path — and never carries its
 body: a webhook URL is typed once and then sends forever, and it should not
 quietly become an export of everything anybody writes. Every call is signed
-(`X-Salt-Signature`) so the receiver can tell ours from anybody else's.
+(`X-Dworkspace-Signature`) so the receiver can tell ours from anybody else's.
 
 **In:** Markdown files, CSV, and a Notion export ZIP — including Notion's
 databases, which most importers drop. There is also a bulk importer that fetches
@@ -137,7 +137,7 @@ this is not the tool yet.
 
 ### For AI assistants
 
-salt.md speaks the Model Context Protocol. Point Claude, ChatGPT or any
+dworkspace speaks the Model Context Protocol. Point Claude, ChatGPT or any
 MCP-capable assistant at your instance and it can search, read, write, create
 databases, fill rows, move pages, comment and share — **49 tools** as of the
 current build.
@@ -194,10 +194,10 @@ something, and for many people that something is what they need.
 
 ### Notion
 
-Notion is the model salt.md is built after, and it is excellent. The differences
+Notion is the model dworkspace is built after, and it is excellent. The differences
 are structural rather than a matter of quality:
 
-| | Notion | salt.md |
+| | Notion | dworkspace |
 | --- | --- | --- |
 | Where your data lives | Notion's servers | your server, one file |
 | Cost | per user, per month | free to self-host |
@@ -209,27 +209,27 @@ are structural rather than a matter of quality:
 **Choose Notion if** you want a large, polished feature surface, do not want to
 run anything, and per-seat cost is not a concern.
 
-**Choose salt.md if** the data has to stay in your house, the per-seat cost has
+**Choose dworkspace if** the data has to stay in your house, the per-seat cost has
 started to hurt, or you want an assistant working in your workspace without
 handing a third party the keys.
 
 ### Trello
 
-Trello is a board. salt.md has boards, but a board here is one of seven views on
+Trello is a board. dworkspace has boards, but a board here is one of seven views on
 a database, and each card is a full document rather than a card with a
 description field.
 
 **Choose Trello if** a board is genuinely all you need — it is faster to set up
 and pleasant at that one job.
 
-**Choose salt.md if** the cards keep wanting to become documents, or if you also
+**Choose dworkspace if** the cards keep wanting to become documents, or if you also
 need a wiki and the two keep drifting apart.
 
 ### AppFlowy
 
 The closest comparison: also an open-source Notion alternative, also
 self-hostable. The honest difference is operational. AppFlowy is a desktop
-application with a separate server component; salt.md is one HTTP server you
+application with a separate server component; dworkspace is one HTTP server you
 reach in a browser, with no client to install. Which suits you depends on
 whether you want an app on each machine or a URL for everybody.
 
@@ -242,19 +242,19 @@ editing at once or around structured databases.
 **Choose Obsidian if** it is mostly you, and the files on your disk are the
 point.
 
-**Choose salt.md if** it is a team, and you need databases and permissions.
+**Choose dworkspace if** it is a team, and you need databases and permissions.
 
 ### Other self-hosted wikis (Outline, Wiki.js, BookStack)
 
 These are good tools. The recurring practical difference is what you have to
 operate: most want PostgreSQL, often Redis, often object storage, usually a
-docker-compose file with several services. salt.md is one binary and one file.
+docker-compose file with several services. dworkspace is one binary and one file.
 If you have a platform team, that difference is small. If you are the platform
 team, it is the whole decision.
 
 ### The one comparison that is always true
 
-Whatever you pick, ask where your notes are in five years. salt.md's answer is
+Whatever you pick, ask where your notes are in five years. dworkspace's answer is
 "in a SQLite file you have a copy of, readable by any tool that reads SQLite,
 exportable to Markdown at any time". That answer does not depend on the project
 surviving.
@@ -271,7 +271,7 @@ there if it is enough.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
-salt
+dworkspace
 ```
 
 Open `http://localhost:8420`, create the first account, done. That account
@@ -286,7 +286,7 @@ Docker works too if you prefer it — one container, one volume.
 This is where most self-hosting attempts die: port forwarding, dynamic DNS,
 certificates.
 
-salt.md has **Cloudflare Tunnel built in**. In the admin settings, one click
+dworkspace has **Cloudflare Tunnel built in**. In the admin settings, one click
 gives you a working public address on `trycloudflare.com` — no account, no
 domain, no open ports in your firewall. It is a real HTTPS address you can send
 to a colleague.
@@ -296,7 +296,7 @@ and it uses that instead. The outbound connection means your server is never
 exposed directly; nothing has to be opened towards the internet.
 
 If you would rather not use Cloudflare: point your own domain at the machine and
-salt.md gets a certificate itself via ACME (Let's Encrypt), or you put it behind
+dworkspace gets a certificate itself via ACME (Let's Encrypt), or you put it behind
 a reverse proxy you already run.
 
 ### 3. Sign in with Microsoft 365 or Google
@@ -307,7 +307,7 @@ another password.
 Register an application with either provider, paste the client ID and secret
 into the admin settings, and colleagues sign in with the account they already
 have. Both are OpenID Connect, and the setup is the same shape for either:
-create the app, add the callback URL salt.md shows you, copy two values back.
+create the app, add the callback URL dworkspace shows you, copy two values back.
 
 One safety detail worth knowing: sign-in only accepts addresses the provider has
 confirmed, so nobody can claim a colleague's future identity by putting their
@@ -328,8 +328,8 @@ does not have to be their own sign-in account.
 ### 5. Backups
 
 ```bash
-salt backup            # writes an archive
-salt restore file.tar.gz
+dworkspace backup            # writes an archive
+dworkspace restore file.tar.gz
 ```
 
 Or copy the SQLite file while the server is stopped. That is the whole backup
@@ -363,7 +363,7 @@ Read this section as a sign that the rest is accurate.
   also the limit. This is right for a team; it is not built for tens of
   thousands of concurrent editors.
 - **No plugin system** — deliberately, and there is a route that does the same
-  job. Extending salt.md means the REST API or the 49 MCP tools, from outside
+  job. Extending dworkspace means the REST API or the 49 MCP tools, from outside
   the process. That covers more than a plugin API usually does, and it does not
   ask you to run somebody else's code inside the thing holding your company's
   notes. What it does not give you is new block types in the editor.
@@ -390,7 +390,7 @@ Read this section as a sign that the rest is accurate.
   of you.
 - Someone may build their own product on it — the licence does not forbid that.
   It requires their version to be as open as this one.
-- The **name** salt.md belongs to the project. Redistribute it as salt.md and
+- The **name** dworkspace belongs to the project. Redistribute it as dworkspace and
   you are welcome; if you fork it into something of your own, give that its own
   name.
 

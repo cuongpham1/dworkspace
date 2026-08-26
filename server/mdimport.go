@@ -83,7 +83,7 @@ const pageLinkHint = `A Markdown link whose target is a page of this instance ` 
 // have shipped for people with a mouse.
 const diagramHint = `A fenced ` + "```mermaid" + ` block becomes a real DIAGRAM, ` +
 	`drawn on the page and in its PDF — the same spelling GitHub and Obsidian ` +
-	`use. Prefer it over describing a flow in prose; you write the text, salt.md ` +
+	`use. Prefer it over describing a flow in prose; you write the text, dworkspace ` +
 	`draws it.`
 
 // parseInline converts inline markdown to BlockNote inline content.

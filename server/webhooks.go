@@ -16,12 +16,12 @@ import (
 
 // Outbound webhooks (W114).
 //
-// The gap this fills: salt.md had nothing that reaches OUT. `/api/events` is a
+// The gap this fills: dworkspace had nothing that reaches OUT. `/api/events` is a
 // server-sent stream, which needs a signed-in client holding a connection open
 // — fine for the app's own tabs, useless for Zapier, Make, n8n or a script on
 // somebody's server. Without an outbound call, every integration has to poll.
 //
-// That single missing piece is why salt.md looked like it had no integration
+// That single missing piece is why dworkspace looked like it had no integration
 // story next to Notion's directory of connectors. Notion's connectors are not
 // plugins running inside Notion; they are outside services calling an API and
 // being called back. The API exists here. The call back did not.
@@ -232,10 +232,10 @@ func (s *Server) deliverWebhook(id, target, secret string, payload []byte) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "salt.md/"+Version)
+	req.Header.Set("User-Agent", "dworkspace/"+Version)
 	// The receiver verifies this over the RAW body with its own copy of the
 	// secret. Without it, anybody who learns the URL can forge our calls.
-	req.Header.Set("X-Salt-Signature", "sha256="+sig)
+	req.Header.Set("X-Dworkspace-Signature", "sha256="+sig)
 
 	// The same guard the bulk importer uses: resolve, check EVERY address, then
 	// dial the one that was checked. A webhook URL is attacker-shaped input even

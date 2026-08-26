@@ -3,7 +3,7 @@ import Portal from './Portal';
 import { t } from '../i18n';
 
 // A slim top progress bar shown while any file uploads (driven by the
-// salt:upload-progress / salt:upload-done events from api.upload).
+// dworkspace:upload-progress / dworkspace:upload-done events from api.upload).
 export function UploadBar() {
   const [progress, setProgress] = useState<number | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
@@ -16,11 +16,11 @@ export function UploadBar() {
       setProgress(1);
       hideTimer.current = window.setTimeout(() => setProgress(null), 400);
     };
-    window.addEventListener('salt:upload-progress', onProg);
-    window.addEventListener('salt:upload-done', onDone);
+    window.addEventListener('dworkspace:upload-progress', onProg);
+    window.addEventListener('dworkspace:upload-done', onDone);
     return () => {
-      window.removeEventListener('salt:upload-progress', onProg);
-      window.removeEventListener('salt:upload-done', onDone);
+      window.removeEventListener('dworkspace:upload-progress', onProg);
+      window.removeEventListener('dworkspace:upload-done', onDone);
     };
   }, []);
   if (progress === null) return null;

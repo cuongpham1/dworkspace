@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// The shapes salt.md actually gets deployed into, walked through end to end:
+// The shapes dworkspace actually gets deployed into, walked through end to end:
 // what each source says, what comes out, and what that means for indexing.
 //
 // The owner's instance is the awkward one — Docker inside an LXC inside
@@ -20,7 +20,7 @@ func TestRealDeploymentShapes(t *testing.T) {
 
 	cases := []struct {
 		shape     string
-		declared  int64 // SALT_MEMORY_MB
+		declared  int64 // DWORKSPACE_MEMORY_MB
 		cgroupCap int64 // enforced container limit
 		host      int64 // what /proc/meminfo reports
 		container bool
@@ -50,7 +50,7 @@ func TestRealDeploymentShapes(t *testing.T) {
 			want:      containerWithoutCap,
 		},
 		{
-			shape:     "same box, SALT_MEMORY_MB=14000",
+			shape:     "same box, DWORKSPACE_MEMORY_MB=14000",
 			declared:  14000 * mb,
 			host:      63413 * mb,
 			container: true,

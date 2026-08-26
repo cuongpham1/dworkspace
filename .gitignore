@@ -2,7 +2,13 @@ node_modules/
 web/dist/*
 !web/dist/.gitkeep
 data/
-/salt
+/dworkspace
+
+# Cross-compiled release binaries (23 MB each). Built by the Makefile / CI, not
+# something a clone should carry.
+dworkspace-linux-*
+dworkspace-darwin-*
+dworkspace-windows-*.exe
 *.log
 .DS_Store
 

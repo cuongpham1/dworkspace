@@ -18,7 +18,7 @@ func TestMarkdownLinkToOwnPageBecomesAPageLink(t *testing.T) {
 		href string
 	}{
 		{"a bare path", "/p/" + id},
-		{"an absolute URL, which is what share_page hands out", "https://salt.example/p/" + id},
+		{"an absolute URL, which is what share_page hands out", "https://dworkspace.example/p/" + id},
 		{"with a trailing slash", "/p/" + id + "/"},
 		{"behind a port", "http://localhost:8420/p/" + id},
 	}

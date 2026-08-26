@@ -5,7 +5,7 @@ words, including the part people are right to ask about.
 
 ## Before a big change
 
-Open an issue first. salt.md has opinions: one binary, no external services,
+Open an issue first. dworkspace has opinions: one binary, no external services,
 English source, everything derived from the code rather than remembered. A pull
 request that runs against one of them is a waste of your evening. A short
 issue costs nothing and saves that.
@@ -16,13 +16,13 @@ Small fixes need no ceremony. Send them.
 
 ```sh
 make build      # frontend and backend, with the frontend embedded
-./salt          # http://localhost:8420
+./dworkspace          # http://localhost:8420
 ```
 
 While developing, run the two halves separately:
 
 ```sh
-SALT_DATA=/tmp/salt-dev SALT_ADDR=:8420 go run .
+DWORKSPACE_DATA=/tmp/dworkspace-dev DWORKSPACE_ADDR=:8420 go run .
 cd web && npx vite
 ```
 
@@ -48,7 +48,7 @@ A pull request needs a signed [Contributor License Agreement](CLA.md). A bot
 asks for it on your first one; signing is a comment, once, and it covers
 everything you send afterwards.
 
-We would rather say why than let you guess. salt.md is AGPL-3.0 and stays that
+We would rather say why than let you guess. dworkspace is AGPL-3.0 and stays that
 way. The plan is to sell a hosted version later, and possibly a commercial
 licence for companies that cannot use AGPL internally. Offering that licence
 requires holding the rights to all of the code, and that is impossible once

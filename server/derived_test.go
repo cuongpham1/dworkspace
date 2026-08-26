@@ -168,7 +168,7 @@ func TestDerivedValuesAppearOnThePageItself(t *testing.T) {
 		t.Fatalf("schema: %v", err)
 	}
 
-	row := s.makeRow(t, ws, uid, systems, "Salt", `{}`)
+	row := s.makeRow(t, ws, uid, systems, "Dworkspace", `{}`)
 	s.makeRow(t, ws, uid, tasks, "A", `{"system":["`+row+`"],"status":"open"}`)
 	s.makeRow(t, ws, uid, tasks, "B", `{"system":["`+row+`"],"status":"open"}`)
 	s.makeRow(t, ws, uid, tasks, "C", `{"system":["`+row+`"],"status":"done"}`)

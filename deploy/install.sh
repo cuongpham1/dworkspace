@@ -1,17 +1,17 @@
 #!/bin/sh
-# Installs salt.md as a systemd service. Run as root on the target machine:
-#   ./deploy/install.sh ./salt
+# Installs dworkspace as a systemd service. Run as root on the target machine:
+#   ./deploy/install.sh ./dworkspace
 set -e
 
-BIN="${1:-./salt}"
-[ -f "$BIN" ] || { echo "usage: $0 <path-to-salt-binary>"; exit 1; }
+BIN="${1:-./dworkspace}"
+[ -f "$BIN" ] || { echo "usage: $0 <path-to-dworkspace-binary>"; exit 1; }
 
-id salt >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin salt
-install -d /opt/salt
-install -m 755 "$BIN" /opt/salt/salt
-install -d -o salt -g salt /opt/salt/data
-install -m 644 "$(dirname "$0")/salt.service" /etc/systemd/system/salt.service
+id dworkspace >/dev/null 2>&1 || useradd -r -s /usr/sbin/nologin dworkspace
+install -d /opt/dworkspace
+install -m 755 "$BIN" /opt/dworkspace/dworkspace
+install -d -o dworkspace -g dworkspace /opt/dworkspace/data
+install -m 644 "$(dirname "$0")/dworkspace.service" /etc/systemd/system/dworkspace.service
 systemctl daemon-reload
-systemctl enable --now salt
+systemctl enable --now dworkspace
 
-echo "salt.md is running on port 80."
+echo "dworkspace is running on port 80."

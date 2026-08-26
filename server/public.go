@@ -16,7 +16,7 @@ func sharePasswordForm(token string, wrong bool) string {
 	if wrong {
 		msg = `<p style="color:#c4554d">Wrong password.</p>`
 	}
-	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>salt.md — protected page</title><style>` + htmlDocStyle + `</style></head><body>` +
+	return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>dworkspace — protected page</title><style>` + htmlDocStyle + `</style></head><body>` +
 		`<h1>🔒 Protected page</h1><p>This page is protected by a password.</p>` + msg +
 		`<form method="post" action="/public/` + html.EscapeString(token) + `">` +
 		`<input type="password" name="pw" placeholder="Password" autofocus style="padding:9px 11px;border:1px solid #ddd;border-radius:8px;font-size:15px"> ` +
@@ -39,7 +39,7 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Robots-Tag", "noindex")
 	if !found {
 		w.WriteHeader(404)
-		w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>salt.md</title><style>` + htmlDocStyle + `</style></head><body><h1>Not found</h1><p>This link is invalid or has expired.</p></body></html>`))
+		w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>dworkspace</title><style>` + htmlDocStyle + `</style></head><body><h1>Not found</h1><p>This link is invalid or has expired.</p></body></html>`))
 		return
 	}
 	if needPW && !pwOK {
@@ -52,7 +52,7 @@ func (s *Server) handlePublicView(w http.ResponseWriter, r *http.Request) {
 	p, err := s.getPage(pageID)
 	if err != nil || p.Trashed {
 		w.WriteHeader(404)
-		w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>salt.md</title><style>` + htmlDocStyle + `</style></head><body><h1>Not found</h1></body></html>`))
+		w.Write([]byte(`<!doctype html><html><head><meta charset="utf-8"><title>dworkspace</title><style>` + htmlDocStyle + `</style></head><body><h1>Not found</h1></body></html>`))
 		return
 	}
 	if p.Type == "collection" {

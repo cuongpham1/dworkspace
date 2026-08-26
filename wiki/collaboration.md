@@ -290,7 +290,7 @@ ten-minute lease would therefore erase a three-hour job halfway through. So:
 
 - a check-in **stays** until the agent checks out;
 - any other call the same account makes naming that page counts as a sign of
-  life, so an agent working inside salt.md stays fresh without spending a call on
+  life, so an agent working inside dworkspace stays fresh without spending a call on
   saying so — including calls the server then refuses, because an agent whose
   write bounced is still alive;
 - what has been silent for **twelve hours** is treated as a crashed session and

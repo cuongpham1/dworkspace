@@ -118,7 +118,7 @@ func (s *Server) mcpReplaceContent(u *user, pageID, md string) (string, error) {
 }
 
 // mcpPrependMarkdown puts Markdown BEFORE the existing content. Notion can do
-// that ("insert at start"), Salt could not until now.
+// that ("insert at start"), Dworkspace could not until now.
 func (s *Server) mcpPrependMarkdown(u *user, pageID, md string) (string, error) {
 	blocks := mdToBlocks(md)
 	if len(blocks) == 0 {
@@ -271,7 +271,7 @@ func (s *Server) mcpListTags(u *user, wsID string) (string, error) {
 }
 
 // mcpExportMarkdown returns a page as Markdown, with its subtree on request.
-// "Salt is called salt.md — that ought to show in the API."
+// "Dworkspace is called dworkspace — that ought to show in the API."
 func (s *Server) mcpExportMarkdown(userID, pageID string, recursive bool) (string, error) {
 	var out strings.Builder
 	var walk func(id string, depth int) error

@@ -1,11 +1,11 @@
 # Reaching your instance from outside
 
-A fresh salt.md listens on `:8420` and answers on every network interface of the
+A fresh dworkspace listens on `:8420` and answers on every network interface of the
 machine it runs on. That is enough for a laptop and for a server on your own
 network. The moment you want a share link that works from a phone, an invitation
 that a colleague can open, a calendar subscription, sign-in through Google or
 Microsoft, or an agent connecting from somewhere else, you need two things: a
-name the outside world can resolve, and salt.md knowing what that name is.
+name the outside world can resolve, and dworkspace knowing what that name is.
 
 This page covers both. It is written for whoever administers the instance —
 everything here lives in **Instance settings**, which only instance admins see
@@ -16,7 +16,7 @@ everything here lives in **Instance settings**, which only instance admins see
 **Instance settings → General → `Public base URL (for links, mail, calendars)`.**
 One field, one value, ending without a slash: `https://notes.example.com`.
 
-It is not what the server listens on. It is what salt.md writes into links it
+It is not what the server listens on. It is what dworkspace writes into links it
 hands to somebody else. The browser you are using knows the address you typed;
 an email does not, a calendar app does not, and a cloud agent certainly does not.
 
@@ -34,7 +34,7 @@ Everything in this list is built from it:
 
 ### What happens when you leave it empty
 
-salt.md does not simply fall over — it guesses, in this order, and the guess is
+dworkspace does not simply fall over — it guesses, in this order, and the guess is
 good enough often enough that the field gets forgotten:
 
 1. the public base URL, if set;
@@ -50,7 +50,7 @@ into a repository for an agent, it is a dead end that looks like a working link.
 Step 3 has its own trap: a quick tunnel's address changes every time it starts,
 so links minted while one was running stop working when it is restarted.
 
-A **named** Cloudflare tunnel never appears in that list at all. salt.md hands
+A **named** Cloudflare tunnel never appears in that list at all. dworkspace hands
 the traffic to Cloudflare and never learns the hostname you chose in the
 dashboard — the status line says exactly that:
 `Tunnel connected — reachable under the hostname set in the Cloudflare dashboard.`
@@ -72,7 +72,7 @@ registered with the provider and one that does not. So if you sign in with
 Google — see [Signing in with Microsoft or Google](sso.md) — or send mail
 through a connected mailbox ([Email](mail.md)), set the field.
 
-With the field set, salt.md also redirects the start of an OAuth sign-in to that
+With the field set, dworkspace also redirects the start of an OAuth sign-in to that
 origin. Click **Sign in with Google** on `http://192.0.2.10:8420` and the browser
 jumps to `https://notes.example.com` first. That is deliberate: the state cookie
 set at the start of the round trip belongs to the host that set it, and a flow
@@ -116,7 +116,7 @@ The machine dials out to Cloudflare and keeps the connection open; nothing has t
 accept an incoming connection. This works behind NAT, behind a firewall you do
 not administer, and on a home line with no fixed address. No port forwarding.
 
-salt.md runs `cloudflared` itself. It looks for the program on the system's
+dworkspace runs `cloudflared` itself. It looks for the program on the system's
 `PATH` first, then at `bin/cloudflared` inside the data directory
 (`bin/cloudflared.exe` on Windows), and only if neither has it does it download
 the official release over HTTPS. What triggers that download is a tunnel
@@ -148,7 +148,7 @@ re-opening the tab for, rather than reloading the page.
 
 Card **`2 · Permanently, with your own domain (Cloudflare Tunnel)`**.
 
-What salt.md needs from you is one value: the tunnel **token**, a long string
+What dworkspace needs from you is one value: the tunnel **token**, a long string
 starting `eyJhIjoi…`. Everything else happens on Cloudflare's side, and their
 documentation is the authority on those screens because they change. The dialog
 names the path it expects — *Zero Trust → Networks → Tunnels → Create tunnel* —
@@ -159,9 +159,9 @@ and what you have to set up there is:
 - a **public hostname** on that tunnel — `notes.example.com` — pointing at this
   machine's own address. That is `http://localhost:8420` with the default listen
   address. The dialog's example says `http://localhost:80`, which is the port
-  the systemd unit in the repository uses; match it to your own `SALT_ADDR`.
+  the systemd unit in the repository uses; match it to your own `DWORKSPACE_ADDR`.
 
-Then, in salt.md:
+Then, in dworkspace:
 
 1. Paste the token into the field on that card. It is a password field; once
    stored, the placeholder reads `•••••• (token stored)` and you never have to
@@ -187,13 +187,13 @@ token therefore begins with **`Stop`**.
 ### What it does once it is up
 
 - **It survives restarts.** A named tunnel is remembered and comes back on the
-  next start, on its own. salt.md waits (up to 30 seconds) for its own port to
+  next start, on its own. dworkspace waits (up to 30 seconds) for its own port to
   answer before dialling out, so the domain does not serve errors during the gap.
-- **A named tunnel restarts itself.** If cloudflared exits, salt.md waits five
+- **A named tunnel restarts itself.** If cloudflared exits, dworkspace waits five
   seconds and starts it again — unless you pressed **`Stop`**, which is the one
   thing that turns the feature off. **A quick tunnel is not supervised**: when
   its process ends, the status goes to error and nothing brings it back.
-- **It leaves cleanly.** On shutdown salt.md tells Cloudflare the connection is
+- **It leaves cleanly.** On shutdown dworkspace tells Cloudflare the connection is
   going away before it stops serving. Skipping that leaves a dead route
   registered at the edge and the domain unreachable for minutes after a restart.
 - **It switches on proxy trust for you.** Behind Cloudflare the forwarded-IP
@@ -221,12 +221,12 @@ edge has to let `/mcp` through. See [Agent access](agent-access.md).
 Card **`3 · Straight to HTTPS (no Cloudflare, e.g. a VPS)`**, on the same tab.
 
 Enter the domain (`notes.example.com`), tick **`Active`**, press **`Save`**, and
-restart the process. salt.md then fetches and renews its own Let's Encrypt
+restart the process. dworkspace then fetches and renews its own Let's Encrypt
 certificate.
 
 What this changes at startup:
 
-- it listens on **`:443`**, whatever `SALT_ADDR` says;
+- it listens on **`:443`**, whatever `DWORKSPACE_ADDR` says;
 - a second listener on **`:80`** answers the certificate challenge and redirects
   everything else to HTTPS;
 - certificates are cached in `certs/` inside the data directory, so a restart
@@ -239,7 +239,7 @@ or the certificate is never issued.
 What it needs from the machine: permission to take two ports below 1024. The
 systemd unit in the repository grants exactly that
 (`AmbientCapabilities=CAP_NET_BIND_SERVICE`) while running as an unprivileged
-`salt` user. Started by hand as an ordinary user, the process does not get them.
+`dworkspace` user. Started by hand as an ordinary user, the process does not get them.
 
 The two ways that fails look nothing alike. If `:443` cannot be bound, the
 process stops and prints why. If only `:80` fails, the process **keeps running**
@@ -248,14 +248,14 @@ while the certificate is never issued, because the challenge has nowhere to land
 An instance answering on `:443` with every browser complaining about the
 certificate is that line, in the log, from startup.
 
-`SALT_TLS_CERT` wins over this setting, and the check is on that one variable
-alone. Set it without `SALT_TLS_KEY` and you get the worst of both: the
+`DWORKSPACE_TLS_CERT` wins over this setting, and the check is on that one variable
+alone. Set it without `DWORKSPACE_TLS_KEY` and you get the worst of both: the
 automatic path switches off, the incomplete pair is not used either, and the
-server serves plain HTTP on `SALT_ADDR` without saying so.
+server serves plain HTTP on `DWORKSPACE_ADDR` without saying so.
 
 ## Route 3 — your own reverse proxy
 
-nginx, Caddy, Traefik, HAProxy, a cloudflared you manage yourself. salt.md asks
+nginx, Caddy, Traefik, HAProxy, a cloudflared you manage yourself. dworkspace asks
 for nothing unusual, but four things have to be right.
 
 1. **Pass `X-Forwarded-Proto`.** It is how the instance knows the outside is
@@ -265,11 +265,11 @@ for nothing unusual, but four things have to be right.
    proxy that quietly drops the upgrade leaves an editor where nobody else's
    cursor ever appears and changes arrive only on reload — see
    [Working together](collaboration.md).
-3. **Do not buffer `/api/events`.** It is a stream that stays open. salt.md sends
+3. **Do not buffer `/api/events`.** It is a stream that stays open. dworkspace sends
    `X-Accel-Buffering: no`, which nginx honours; other proxies need telling.
 4. **Raise the body limit** to at least the value in
    `Max. file size per upload (MB)` on the General tab, or uploads fail at the
-   proxy before salt.md ever sees them.
+   proxy before dworkspace ever sees them.
 
 Then tick **`Run behind a reverse proxy (trust X-Forwarded-For)`** on the
 `Domain & proxy` tab **and press `Save`**. The tunnel buttons on that tab act the
@@ -277,7 +277,7 @@ moment you press them; this checkbox does not. It is part of the dialog and
 reaches the server only when the dialog is saved — tick it, close the dialog, and
 nothing has changed.
 
-Without it, salt.md ignores forwarded-IP headers and every visitor looks like the
+Without it, dworkspace ignores forwarded-IP headers and every visitor looks like the
 proxy: one shared bucket for the sign-in limit and for the public-form limit, one
 address on every rejected-credential log line a fail2ban jail would read
 ([History and audit](history-and-audit.md)), and the proxy's address recorded as
@@ -292,7 +292,7 @@ the checkbox also mentions the audit log; that is the one place an address never
 goes. The activity log records who did what, never from where.
 
 **Bind the instance to loopback while you are at it.** With a proxy in front,
-nothing needs to reach the port from outside: `SALT_ADDR=127.0.0.1:8420` makes
+nothing needs to reach the port from outside: `DWORKSPACE_ADDR=127.0.0.1:8420` makes
 the instance answer on the machine itself only, and both a proxy and the built-in
 tunnel reach it there. (With built-in HTTPS switched on this has no effect —
 that route takes `:443` regardless.)
@@ -313,7 +313,7 @@ Below it, three ready-made snippets, each with a **`Copy`** button:
 | `nginx` | a `server` block with the forwarded headers, the WebSocket upgrade, `proxy_read_timeout 3600s` and `client_max_body_size` filled in from your upload limit |
 
 The domain in all three comes from the public base URL, so set that first —
-otherwise the examples read `salt.example.com` and you will paste a placeholder
+otherwise the examples read `dworkspace.example.com` and you will paste a placeholder
 into a real config file.
 
 One line under the blocks is easy to scroll past and answers a real question:
@@ -323,7 +323,7 @@ are on by default there.
 ### Checking that proxy trust actually works
 
 **Instance settings → `Maintenance`** shows
-`Your IP (as the server sees it)`. It reads back the address salt.md attributes
+`Your IP (as the server sees it)`. It reads back the address dworkspace attributes
 to your request, with `proxy headers active` appended when the checkbox is on.
 If that shows the proxy's address rather than yours, the header is not arriving.
 
@@ -338,24 +338,24 @@ after a round of settings changes, re-open the dialog and tick the box again.
 Two environment variables, both required:
 
 ```sh
-SALT_TLS_CERT=/path/fullchain.pem SALT_TLS_KEY=/path/key.pem salt
+DWORKSPACE_TLS_CERT=/path/fullchain.pem DWORKSPACE_TLS_KEY=/path/key.pem dworkspace
 ```
 
 Only one set and the server quietly serves plain HTTP — and, as above,
-`SALT_TLS_CERT` on its own also disables the built-in HTTPS route. The rest of
+`DWORKSPACE_TLS_CERT` on its own also disables the built-in HTTPS route. The rest of
 the environment is in [Self-hosting](self-hosting.md).
 
 ## Where a fresh installation listens
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
-salt
+dworkspace
 ```
 
 The installer detects the platform (Linux and macOS, x86-64 and arm64), downloads
 the matching prebuilt binary and puts it in `/usr/local/bin` — or `$HOME/.local/bin`
 when that is not writable and there is no `sudo`. `BIN_DIR=/path` overrides it,
-`SALT_VERSION=v1.0.0` pins a version. It then tells you to open
+`DWORKSPACE_VERSION=v1.0.0` pins a version. It then tells you to open
 `http://localhost:8420`.
 
 It installs a program; it does not open a port, register a service or configure a
@@ -364,7 +364,7 @@ is already reachable from the rest of your network — one of the three routes a
 is what makes it reachable beyond that.
 
 The repository also carries a systemd unit and a script to install it, which runs
-salt.md as its own user out of `/opt/salt`, keeps its data in `/opt/salt/data`
+dworkspace as its own user out of `/opt/dworkspace`, keeps its data in `/opt/dworkspace/data`
 and listens on port 80 instead.
 
 ## Checking it from outside

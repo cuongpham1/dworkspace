@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="salt.md — the single-binary workspace for notes, docs and databases">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="dworkspace — the single-binary workspace for notes, docs and databases">
   <defs>
     <!-- the app's one rainbow element (from styles.css rainbow-linear) -->
     <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="0">
@@ -24,7 +24,7 @@
   </g>
 
   <!-- wordmark — lowercase, monospace / typewriter, white, no color -->
-  <text x="330" y="188" font-family="ui-monospace,'SF Mono',SFMono-Regular,'JetBrains Mono','Cascadia Code',Menlo,Consolas,'Courier New',monospace" font-size="92" font-weight="600" letter-spacing="1" fill="#f5f5f7">salt.md</text>
+  <text x="330" y="188" font-family="ui-monospace,'SF Mono',SFMono-Regular,'JetBrains Mono','Cascadia Code',Menlo,Consolas,'Courier New',monospace" font-size="92" font-weight="600" letter-spacing="1" fill="#f5f5f7">dworkspace</text>
 
   <text x="334" y="238" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="20" font-weight="500" fill="#b7b7c1">Notes, docs &amp; databases in a single binary.</text>
   <text x="334" y="270" font-family="ui-monospace,'SF Mono',SFMono-Regular,Menlo,Consolas,monospace" font-size="15" fill="#6d6d78" letter-spacing="0.3">self-hosted · one SQLite file · AI-native (MCP)</text>

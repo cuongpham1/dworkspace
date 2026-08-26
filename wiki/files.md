@@ -41,7 +41,7 @@ account or an API token**. Three things follow from how it is served:
 Drag a file from your desktop onto an open document. A drop that lands on the
 text is placed exactly where the pointer is. A drop anywhere else on the page —
 the wide margins, the empty space below the last block, the title — is caught by
-Salt, shows a **Drop to add to this page** overlay, and appends the file at the
+Dworkspace, shows a **Drop to add to this page** overlay, and appends the file at the
 end of the document.
 
 Dropping several files at once works; they upload one after another, and one
@@ -55,7 +55,7 @@ The **Media** group of the slash menu carries four entries — **Image**,
 **Video**, **Audio** and **File** — and each inserts an empty block with its own
 panel. The panel has two tabs:
 
-- **Upload** opens a file picker. What you choose is stored by Salt exactly as
+- **Upload** opens a file picker. What you choose is stored by Dworkspace exactly as
   a dropped file is: same size cap, same index, same PDF text extraction.
 - **Embed** takes an address instead (**Enter URL**, then **Embed image** /
   **Embed file**). Nothing is uploaded. The block points at somebody else's
@@ -192,7 +192,7 @@ under.
 
 ## PDF text and search
 
-When a PDF is uploaded **with a page**, Salt extracts its text and indexes it
+When a PDF is uploaded **with a page**, Dworkspace extracts its text and indexes it
 under that page. Searching for a phrase that appears only inside the PDF finds
 the page carrying it. See [Search](search.md). Agents reach the same text: the
 `search` tool covers titles, page content and indexed PDF attachments in one
@@ -226,7 +226,7 @@ database weight.
 The startup log prints what the instance decided:
 `memory: 16000 MB available, soft limit 12800 MB, PDF indexing up to 50 MB,
 3 extraction(s) at a time`. If that figure is wrong — which happens in nested
-setups, a container inside a virtual machine — set `SALT_MEMORY_MB` to the real
+setups, a container inside a virtual machine — set `DWORKSPACE_MEMORY_MB` to the real
 number of megabytes. See [Self-hosting](self-hosting.md).
 
 Extraction runs for PDFs only. No other format's contents are read.

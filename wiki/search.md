@@ -1,6 +1,6 @@
 # Search
 
-Search is the fastest way to reach anything in salt.md. It runs full text over
+Search is the fastest way to reach anything in dworkspace. It runs full text over
 every page you are allowed to read — titles, body text, the property values of
 database rows, and the text pulled out of PDFs attached to a page. This page
 explains how to open it, what is in the index and what is not, why a German
@@ -86,7 +86,7 @@ narrow the search with a word that only one of them contains.
 Three entries in that table deserve a sentence each.
 
 **PDF text and property values sit in a second index that is only consulted as
-a fallback.** salt.md keeps two indexes: one over the **passages** of a page
+a fallback.** dworkspace keeps two indexes: one over the **passages** of a page
 (see below), and one over the page as a whole. A PDF's extracted text and a
 row's property values go into the whole-page index only. The search asks the
 passage index first and asks the whole-page index **only when the passage
@@ -231,7 +231,7 @@ name. The text is pulled out when the file is uploaded and joins the index
 under the page that carries it.
 
 One limit is worth knowing before you rely on it, and it is the one from the
-table above: extracted PDF text lives in the whole-page index, which salt.md
+table above: extracted PDF text lives in the whole-page index, which dworkspace
 consults only when the passage search finds nothing at all. A phrase that
 appears in a PDF and also in the body of some other page returns that other
 page, not the PDF's carrier. Search a term that is distinctive, or reach for
@@ -280,7 +280,7 @@ stored, listed, previewable and downloadable exactly as always — only its text
 stays out of the search index, and the server log records the skip, by the
 file's internal id together with its size and the limit. The reason the limit
 exists is not theoretical: an oversized PDF once parsed itself into enough
-memory to take an instance down. salt.md now refuses before reading rather than
+memory to take an instance down. dworkspace now refuses before reading rather than
 after. See [Files](files.md).
 
 ## When the index catches up

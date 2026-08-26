@@ -8,7 +8,7 @@ import (
 
 // The raw trail: dated notes beside the edited version of a page.
 //
-// Every write in salt.md is an act of authorship — title, place, icon, tags.
+// Every write in dworkspace is an act of authorship — title, place, icon, tags.
 // That is right for a document and it is the hurdle a note taken in the middle
 // of a problem does not clear. So the good write-ups happen AFTERWARDS, and by
 // then the author knows how it ended: the abandoned approaches, the dead ends

@@ -37,7 +37,7 @@ export default function Setup({ onSuccess }: { onSuccess: (user: User) => void }
 
             Always the wordmark here, never an instance name: this screen is what
             CREATES the instance, so there is no name of anybody's to honour yet. */}
-        <h1 className="wordmark">salt.md</h1>
+        <h1 className="wordmark">dworkspace</h1>
         <p>{t('Create the first (admin) account for this workspace.')}</p>
         <input
           autoFocus

@@ -84,6 +84,8 @@ func renderInline(raw json.RawMessage) string {
 			label := strProp(it.Props, "label", "Untitled")
 			id := strProp(it.Props, "pageId", "")
 			b.WriteString("[" + label + "](/p/" + id + ")")
+		case "mention":
+			b.WriteString("@" + strProp(it.Props, "label", "Unknown"))
 		default:
 			b.WriteString(styleText(it.Text, it.Styles))
 		}
@@ -258,7 +260,7 @@ func walkText(v any, b *strings.Builder) {
 			b.WriteString(" ")
 		}
 		// Index the visible label of a page mention too.
-		if t["type"] == "pageLink" {
+		if t["type"] == "pageLink" || t["type"] == "mention" {
 			if props, ok := t["props"].(map[string]any); ok {
 				if label, ok := props["label"].(string); ok {
 					b.WriteString(label)
@@ -508,7 +510,7 @@ func (s *Server) handleExportAll(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/zip")
-	w.Header().Set("Content-Disposition", `attachment; filename="salt-export.zip"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="dworkspace-export.zip"`)
 	zw := zip.NewWriter(w)
 	defer zw.Close()
 

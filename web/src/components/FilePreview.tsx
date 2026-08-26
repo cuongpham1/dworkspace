@@ -8,7 +8,7 @@ import { t } from '../i18n';
 // Office formats (.docx/.xlsx/.pptx) are NOT here: no browser reads them
 // natively, and the two ways to change that — shipping LibreOffice in the
 // image, or handing the file to Microsoft's online viewer — cost either the
-// single-binary install or the promise that a self-hosted Salt keeps its
+// single-binary install or the promise that a self-hosted Dworkspace keeps its
 // documents to itself.
 const PREVIEWABLE = /\.pdf$/i;
 

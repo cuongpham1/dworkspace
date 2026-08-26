@@ -16,14 +16,14 @@ import (
 
 	"golang.org/x/crypto/acme/autocert"
 
-	"salt/server"
+	"dworkspace/server"
 )
 
 //go:embed all:web/dist
 var distFS embed.FS
 
 // The notices travel with the binary, not only with the repository. Somebody
-// who installs salt.md with one command never sees GitHub, and "the notice
+// who installs dworkspace with one command never sees GitHub, and "the notice
 // accompanies what you ship" is the one duty almost every licence here imposes.
 //
 //go:embed THIRD-PARTY-NOTICES.md
@@ -36,7 +36,7 @@ func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "backup":
-			dest := "salt-backup.tar.gz"
+			dest := "dworkspace-backup.tar.gz"
 			if len(os.Args) > 2 {
 				dest = os.Args[2]
 			}
@@ -47,7 +47,7 @@ func main() {
 			return
 		case "restore":
 			if len(os.Args) < 3 {
-				log.Fatal("usage: salt restore <backup.tar.gz>")
+				log.Fatal("usage: dworkspace restore <backup.tar.gz>")
 			}
 			if err := server.Restore(dataDir, os.Args[2]); err != nil {
 				log.Fatalf("restore: %v", err)
@@ -113,15 +113,15 @@ func main() {
 			}()
 			httpSrv.Addr = ":443"
 			httpSrv.TLSConfig = m.TLSConfig()
-			log.Printf("salt.md %s listening on :443 (auto-HTTPS for %s, data: %s)", server.Version, domain, dataDir)
+			log.Printf("dworkspace %s listening on :443 (auto-HTTPS for %s, data: %s)", server.Version, domain, dataDir)
 			serveErr <- httpSrv.ListenAndServeTLS("", "")
 			return
 		}
 		if certFile != "" && keyFile != "" {
-			log.Printf("salt.md %s listening on %s (TLS, data: %s)", server.Version, addr, dataDir)
+			log.Printf("dworkspace %s listening on %s (TLS, data: %s)", server.Version, addr, dataDir)
 			serveErr <- httpSrv.ListenAndServeTLS(certFile, keyFile)
 		} else {
-			log.Printf("salt.md %s listening on %s (data: %s)", server.Version, addr, dataDir)
+			log.Printf("dworkspace %s listening on %s (data: %s)", server.Version, addr, dataDir)
 			serveErr <- httpSrv.ListenAndServe()
 		}
 	}()

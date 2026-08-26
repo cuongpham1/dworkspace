@@ -103,7 +103,7 @@ func TestPresenceSurvivesALongSilence(t *testing.T) {
 	}
 }
 
-// Any other call on the page refreshes it, so an agent working inside salt.md
+// Any other call on the page refreshes it, so an agent working inside dworkspace
 // never has to spend a call saying "still here".
 func TestAnyCallIsASignOfLife(t *testing.T) {
 	s := testServer(t)

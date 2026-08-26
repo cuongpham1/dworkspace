@@ -155,7 +155,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: salt-desktop-${{ matrix.name }}
+          name: dworkspace-desktop-${{ matrix.name }}
           path: |
             desktop/dist/*.dmg
             desktop/dist/*.exe
@@ -186,9 +186,9 @@ jobs:
           # which is the download people actually come for.
           prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           body: |
-            The salt.md desktop app — a window onto a server you run.
+            The dworkspace desktop app — a window onto a server you run.
 
-            It is **not** how you install salt.md. The server is a separate
+            It is **not** how you install dworkspace. The server is a separate
             download; see https://salt.md/self-host/. Install that first, then
             point this at it.
 

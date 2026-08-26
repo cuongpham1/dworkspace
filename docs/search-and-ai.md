@@ -62,7 +62,7 @@ holding once the model arrives.
 
 In the neighbouring project (`~/Code/agent`, Node/TypeScript) exactly this
 search is already running — there for skills and for memory. It has nothing to
-do with salt.md and will not become part of it: it is a source of decisions that
+do with dworkspace and will not become part of it: it is a source of decisions that
 were once taken there and proven in use. The code is not transferable anyway
 (Node against Go without CGO); the decisions are:
 

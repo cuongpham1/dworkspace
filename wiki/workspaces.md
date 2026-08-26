@@ -1,6 +1,6 @@
 # Workspaces
 
-A workspace is the boundary around content. Every page in salt.md belongs to
+A workspace is the boundary around content. Every page in dworkspace belongs to
 exactly one workspace, and you only see pages in workspaces you are a member of.
 There is no per-page invitation list: if you need "these four people and nobody
 else", the answer is a workspace, not a setting on a page. This page covers
@@ -77,7 +77,7 @@ and no data. You fill it.*
 4. Type a **Name**.
 5. Press **Create workspace**.
 
-Three blueprints ship with salt.md:
+Three blueprints ship with dworkspace:
 
 | Blueprint | What it is |
 | --- | --- |
@@ -333,7 +333,7 @@ export too.
 Importing needs no role anywhere — it makes a new workspace, so the only gate is
 the instance-wide *Users may create their own workspaces* setting. Two answers
 worth expecting: if the name is already taken, the new workspace gets
-*(Import)* appended to it, and an archive written by a newer version of salt.md
+*(Import)* appended to it, and an archive written by a newer version of dworkspace
 is refused with a message telling you to update.
 
 See [Import and export](import-export.md).

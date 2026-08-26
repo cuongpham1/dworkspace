@@ -91,7 +91,7 @@ func TestWebhookDeliversASignedPayload(t *testing.T) {
 		buf := make([]byte, 4096)
 		n, _ := r.Body.Read(buf)
 		gotBody = buf[:n]
-		gotSig = r.Header.Get("X-Salt-Signature")
+		gotSig = r.Header.Get("X-Dworkspace-Signature")
 		select {
 		case done <- struct{}{}:
 		default:

@@ -8,9 +8,9 @@ import { Bot, Check, Copy, Download, ShieldCheck, KeyRound } from 'lucide-react'
 import { t } from '../i18n';
 
 /** Injected by the build; false everywhere except the website's framed demo. */
-declare const __SALT_DEMO__: boolean;
+declare const __DWORKSPACE_DEMO__: boolean;
 
-// "Connect an agent" (wave 44): salt.md is AI-native — every agent talks to the
+// "Connect an agent" (wave 44): dworkspace is AI-native — every agent talks to the
 // workspace through the built-in MCP server. This modal turns connecting into a
 // one-minute job: create a token with one click, pick an agent from the
 // gallery, copy a ready-made config snippet.
@@ -38,7 +38,7 @@ const TOKEN_PH = '<YOUR-TOKEN>';
 const mcpURL = (url: string, token: string) => (token ? `${url}/mcp/${token}` : `${url}/mcp`);
 
 const mcpJSON = (url: string, token: string) =>
-  JSON.stringify({ mcpServers: { salt: { url: mcpURL(url, token) } } }, null, 2);
+  JSON.stringify({ mcpServers: { dworkspace: { url: mcpURL(url, token) } } }, null, 2);
 
 // Real logos from selfh.st/icons, bundled locally (web/public/agents/).
 // mono = black logo → inverted in dark mode.
@@ -79,7 +79,7 @@ const AGENTS: AgentDef[] = [
     id: 'claude-code',
     name: 'Claude Code',
     logo: img('claude.svg'),
-    snippet: (url, token) => `claude mcp add --transport http salt ${mcpURL(url, token)}`,
+    snippet: (url, token) => `claude mcp add --transport http dworkspace ${mcpURL(url, token)}`,
   },
   {
     id: 'chatgpt',
@@ -91,7 +91,7 @@ const AGENTS: AgentDef[] = [
     id: 'codex',
     name: 'OpenAI Codex',
     logo: img('openai.svg', true),
-    snippet: (url, token) => `[mcp_servers.salt]
+    snippet: (url, token) => `[mcp_servers.dworkspace]
 url = "${mcpURL(url, token)}"`,
   },
   {
@@ -123,7 +123,7 @@ url = "${mcpURL(url, token)}"`,
     name: 'Gemini CLI',
     logo: img('google-gemini.svg'),
     snippet: (url, token) =>
-      JSON.stringify({ mcpServers: { salt: { httpUrl: mcpURL(url, token) } } }, null, 2),
+      JSON.stringify({ mcpServers: { dworkspace: { httpUrl: mcpURL(url, token) } } }, null, 2),
   },
   {
     id: 'other',
@@ -164,11 +164,11 @@ export default function AgentConnectModal({
 
   // Prefer the configured public address (Domain/Tunnel) over whatever address
   // this browser happens to use — cloud agents must reach the URL from outside.
-  // Framed on the marketing site, this origin is salt.md — an address that
+  // Framed on the marketing site, this origin is dworkspace — an address that
   // speaks no MCP and that a visitor might really paste into their client. An
   // obviously invented host says "put your own instance here" instead.
   const [url, setUrl] = useState(
-    __SALT_DEMO__ ? 'https://salt.example.com' : window.location.origin,
+    __DWORKSPACE_DEMO__ ? 'https://dworkspace.example.com' : window.location.origin,
   );
   useEffect(() => {
     api
@@ -210,7 +210,7 @@ export default function AgentConnectModal({
           </h2>
           <p className="dialog-hint">
             {t(
-              'salt.md is AI-native: the built-in MCP server lets any agent read, write and search pages and maintain collections. There are two ways in — signing in, or a token that lives in the address.',
+              'dworkspace is AI-native: the built-in MCP server lets any agent read, write and search pages and maintain collections. There are two ways in — signing in, or a token that lives in the address.',
             )}
           </p>
 

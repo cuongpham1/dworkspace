@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 // Global single-modal coordinator. Every modal calls useExclusiveModal(onClose)
-// on mount: it announces itself on the "salt:modal" event (which closes any
+// on mount: it announces itself on the "dworkspace:modal" event (which closes any
 // other open modal and collapses the sidebar drawer via App's listener) and
 // closes itself when a *different* modal announces. Confirm/prompt dialogs
 // (DialogHost) deliberately do NOT participate, so a confirmation can layer on
@@ -9,7 +9,7 @@ import { useEffect, useRef } from 'react';
 
 export function announceModal(): symbol {
   const id = Symbol('modal');
-  window.dispatchEvent(new CustomEvent('salt:modal', { detail: id }));
+  window.dispatchEvent(new CustomEvent('dworkspace:modal', { detail: id }));
   return id;
 }
 
@@ -21,8 +21,8 @@ export function useExclusiveModal(onClose: () => void) {
     const onOther = (e: Event) => {
       if ((e as CustomEvent<symbol>).detail !== myId) closeRef.current();
     };
-    window.addEventListener('salt:modal', onOther);
-    return () => window.removeEventListener('salt:modal', onOther);
+    window.addEventListener('dworkspace:modal', onOther);
+    return () => window.removeEventListener('dworkspace:modal', onOther);
   }, []);
 }
 

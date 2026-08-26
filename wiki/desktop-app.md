@@ -1,12 +1,12 @@
 # The desktop app
 
-salt.md has a desktop application. It is a **window onto a server you run** —
+dworkspace has a desktop application. It is a **window onto a server you run** —
 not a second copy of the product, not a local instance, and not an offline mode.
 You give it the address of your instance once, and it opens straight into your
 workspace in a window with no address bar, a native menu, and its own place in
 the dock or taskbar.
 
-**It is not how you install salt.md, and it is no use on its own.** The server
+**It is not how you install dworkspace, and it is no use on its own.** The server
 is a separate program — one binary that runs on Linux, macOS or Windows and
 answers in a browser; see [Getting started](getting-started.md). Install that
 first. This app then points at it. The two are different downloads with
@@ -23,7 +23,7 @@ unknown, with the button to continue hidden behind "More info". That reads as
 malware. Offering nothing is the better of two bad options until there is a
 certificate for it.
 
-Everything you see in it is the same salt.md the browser shows. Your pages,
+Everything you see in it is the same dworkspace the browser shows. Your pages,
 files and databases stay on the server. This page covers connecting the app,
 changing which instance it points at, the two ways of signing in, what the
 window does that a browser tab does not, and how the app is built.
@@ -45,36 +45,36 @@ in months is an ordinary case, not a broken one. The app's version (Help →
 **About this app**) and your instance's version are separate numbers.
 
 The app is not shipped with the server release. It is built from the `desktop/`
-folder of the salt.md repository — see [Building it](#building-it) at the end of
+folder of the dworkspace repository — see [Building it](#building-it) at the end of
 this page.
 
 ## Connecting it to your instance
 
 On first launch the window shows a single screen headed **Connect to your
-salt.md**, with the line *This app is a window onto a server you run. Your data
+dworkspace**, with the line *This app is a window onto a server you run. Your data
 stays there.*
 
 1. Type the address of your instance in the field. It is empty on first launch;
-   `salt.example.com` is the grey example inside it, not a value. Pressing
+   `dworkspace.example.com` is the grey example inside it, not a value. Pressing
    **Connect** on an untouched field does nothing.
 2. Press **Connect**, or the Enter key.
 
-The app then asks that address whether a salt.md is actually there — it calls
+The app then asks that address whether a dworkspace is actually there — it calls
 `/api/health` and waits for the answer — before saving anything. Typing an
 address that answers nothing and being dropped into a blank window is the
 failure this check exists to prevent.
 
-While it checks, the screen says *Looking for a salt.md there…*. Then one of:
+While it checks, the screen says *Looking for a dworkspace there…*. Then one of:
 
 | What it says | What happened |
 | --- | --- |
 | Found it. Opening… | The address is saved and the window loads your instance. |
 | That does not look like an address. | What you typed cannot be read as a web address at all. |
-| Something answered there, but it is not a salt.md. | The answer was readable and was not a healthy salt.md: another service with its own API, or a salt.md whose database is not responding. |
+| Something answered there, but it is not a dworkspace. | The answer was readable and was not a healthy dworkspace: another service with its own API, or a dworkspace whose database is not responding. |
 | Nothing answered there. Check the address, and that the server is running. | Nothing replied, or what replied was not an answer this check can read. Wrong host or port, server stopped, a name that does not resolve, a certificate the app refuses — and also a router page, a proxy or another application on that port, because a page of HTML lands here rather than in the row above. |
 
 Under the field is a closing line for anybody who has no server yet: *No server
-yet? salt.md is one binary you run yourself — see salt.md for how to start one.*
+yet? dworkspace is one binary you run yourself — see dworkspace for how to start one.*
 [Self-hosting](self-hosting.md) is that story.
 
 ### What you may type
@@ -84,18 +84,18 @@ place in it that guesses at what you meant:
 
 | You type | The app uses |
 | --- | --- |
-| `salt.example.com` | `https://salt.example.com` |
-| `https://salt.example.com` | `https://salt.example.com` — an explicit scheme always wins |
+| `dworkspace.example.com` | `https://dworkspace.example.com` |
+| `https://dworkspace.example.com` | `https://dworkspace.example.com` — an explicit scheme always wins |
 | `localhost:8420` | `http://localhost:8420` |
 | `127.0.0.1:8420` | `http://127.0.0.1:8420` |
 | `192.0.2.10:8420` | `https://192.0.2.10:8420` |
-| `https://salt.example.com/p/9fd2?tab=x` | `https://salt.example.com` |
+| `https://dworkspace.example.com/p/9fd2?tab=x` | `https://dworkspace.example.com` |
 
 Two rules are worth knowing because they are not obvious:
 
 - **A bare host becomes `https`, but this machine becomes `http`.**
   `localhost`, `127.0.0.1`, `0.0.0.0` and `[::1]` default to plain HTTP, because
-  a salt.md you started on your own machine serves plain HTTP unless you gave it
+  a dworkspace you started on your own machine serves plain HTTP unless you gave it
   a certificate. Anything else — including a LAN address like `192.0.2.10` — gets
   `https`, since that may well be behind a proxy that terminates TLS.
 - **A pasted page address is cut back to the instance.** People copy the address
@@ -130,8 +130,8 @@ the app. The address can be replaced with another one and that is all. If you
 want the app to arrive at the connect screen again, point it at the instance you
 do want.
 
-**Upgrading the app keeps your address.** The application was named `salt.md`
-before it was named `salt.md`, and the settings live in a folder derived from
+**Upgrading the app keeps your address.** The application was named `dworkspace`
+before it was named `dworkspace`, and the settings live in a folder derived from
 that name. A new version copies the old file across once, and only when it has
 nothing of its own yet, so an upgrade does not silently forget which server you
 had configured.
@@ -142,7 +142,7 @@ Two routes, and which one you get depends on what you press.
 
 ### With a password, in the window
 
-salt.md's own sign-in screen appears **inside the app window**, exactly as it
+dworkspace's own sign-in screen appears **inside the app window**, exactly as it
 does in a browser: email, password, and a two-factor code if your account has one
 ([Account](account.md)). Nothing leaves the app — the form is submitted in place,
 so the window never navigates and nothing diverts it. This is the ordinary way
@@ -175,13 +175,13 @@ What you see:
 1. Your browser opens on your instance. If you are not signed in there, the
    normal sign-in screen appears first — password and two-factor code, or your
    company account. It returns to the right place afterwards.
-2. A page headed **Sign in to the desktop app?** with the line *The salt.md app
+2. A page headed **Sign in to the desktop app?** with the line *The dworkspace app
    on this computer is asking for a session.* and a box showing which account it
    would use — your name, and your email address if you have one.
 3. Press **Allow**. **Not now** cancels and takes you to your workspace in the
    browser.
 4. A page says **Signed in.** — *You can close this tab and go back to the
-   salt.md app.* — with an **Open salt.md** button. The browser usually jumps
+   dworkspace app.* — with an **Open dworkspace** button. The browser usually jumps
    back to the app on its own; the button is there for browsers that will not
    follow an unfamiliar link without a click.
 5. The app window opens your workspace.
@@ -223,7 +223,7 @@ where it was. Start again from **File → Sign in with your browser**.
 
 If the hand-back fails after you pressed **Allow** — the code expired, or it was
 already used — the app window returns to the connect screen. The line it shows
-there is the generic one, *Could not reach https://salt.example.com. Is it
+there is the generic one, *Could not reach https://dworkspace.example.com. Is it
 running?*, even when the server answered perfectly well; what failed is the
 sign-in. Start it again from **File → Sign in with your browser**.
 
@@ -237,7 +237,7 @@ Two cases keep a provider sign-in inside the app window, unchanged and working:
   does not gets the sign-in in the window, and the round trip to the provider
   runs there. Without that question you would end up standing in your workspace
   in a browser wondering what happened.
-- **The machine would not let the app claim its `salt://` link.** Without that,
+- **The machine would not let the app claim its `dworkspace://` link.** Without that,
   the browser has no way to reach back, so the app keeps the in-window sign-in
   as a way in rather than leaving you with none. A run started from source
   (`npm start`) never claims the link on purpose, so a development run cannot
@@ -259,7 +259,7 @@ window free to wander for the rest of the session.
 ### Signing out, and switching accounts
 
 Sign out the ordinary way: your name at the bottom of the sidebar → **Sign
-out**. The window returns to salt.md's own sign-in screen inside the app, with
+out**. The window returns to dworkspace's own sign-in screen inside the app, with
 the *Connected to … Change* line back at the bottom, and you can sign in as
 somebody else from there.
 
@@ -283,11 +283,11 @@ been connected. Do that piece of setup in a browser.
   The first launch opens at 1280 × 860, the window cannot be made smaller than
   700 × 500, and the size is not recorded while the window is minimised or in
   full screen — so neither state becomes the size you get next time.
-- **On macOS the window has no title bar of its own.** salt.md's own top bar is
+- **On macOS the window has no title bar of its own.** dworkspace's own top bar is
   the chrome; the traffic lights sit inside it, and the app supplies the spacing
   around them. Drag the window by the empty space in the sidebar header or the
   tab bar.
-- **Right-click gives you salt.md's own menus** — on a page in the sidebar, on a
+- **Right-click gives you dworkspace's own menus** — on a page in the sidebar, on a
   row, on a card. The browser's own menu is suppressed so it cannot open on top
   of them. It is kept in exactly two places: where you are typing, and on text
   you selected first. There you get Copy and the spelling suggestions, and the
@@ -315,7 +315,7 @@ been connected. Do that piece of setup in a browser.
   what it tells websites it is. Identity providers refuse a sign-in page to
   anything that says Electron, and this window is a visible one with no script
   of the app's own in the page.
-- **Help → salt.md documentation** opens this wiki. **Help → About this app**
+- **Help → dworkspace documentation** opens this wiki. **Help → About this app**
   shows the app's version and which instance it is connected to.
 
 One consequence worth knowing: anything the interface opens **in a new tab**
@@ -328,7 +328,7 @@ browser — which, if you signed in through the browser, is the browser you used
 
 The app does not show the browser's error page. A failed load lands on the
 connect screen with the address prefilled and a line naming it, scheme and all:
-*Could not reach https://salt.example.com. Is it running?*
+*Could not reach https://dworkspace.example.com. Is it running?*
 
 The usual causes, in the order they happen: the laptop is not on the network;
 the instance is only reachable through a VPN or a tunnel that is not up (see
@@ -381,18 +381,18 @@ app is damaged — that message is about the missing signature, not about the
 file. Removing the quarantine flag by hand gets past it:
 
 ```sh
-xattr -dr com.apple.quarantine /Applications/salt.md.app
+xattr -dr com.apple.quarantine /Applications/dworkspace.app
 ```
 
 That is acceptable for your own machine and not something to ask a colleague to
 do — and it is the reason the released builds are signed and notarised, so that
 nobody ever has to. Linux builds carry no signature and are not expected to.
 
-**Why Finder writes "salt.md.app".** macOS hides the `.app` extension — except
+**Why Finder writes "dworkspace.app".** macOS hides the `.app` extension — except
 when hiding it would leave a name that ends in another known extension, and
-`salt.md` reads as a Markdown file. The menu bar, the dock and the About box say
-**salt.md**; Finder and Spotlight say salt.md.app. Nothing overrides it, and a
-dot in the name is not the cause: `salt.x.app` shows as *salt.x*.
+`dworkspace` reads as a Markdown file. The menu bar, the dock and the About box say
+**dworkspace**; Finder and Spotlight say dworkspace.app. Nothing overrides it, and a
+dot in the name is not the cause: `dworkspace.x.app` shows as *dworkspace.x*.
 
 ## Related pages
 

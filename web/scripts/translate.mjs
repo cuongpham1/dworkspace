@@ -85,7 +85,7 @@ async function translateBatch(keys, loc, cats) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: process.env.SALT_TRANSLATE_MODEL || 'claude-sonnet-5',
+      model: process.env.DWORKSPACE_TRANSLATE_MODEL || 'claude-sonnet-5',
       max_tokens: 16384,
       messages: [
         {

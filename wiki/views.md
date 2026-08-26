@@ -271,7 +271,7 @@ Two things about that link are worth knowing before you send it out:
   link always renders the first one in the tab order.
 
 What a visitor sees is the collection's icon, the heading, the description, the
-same fields, a submit button and a *Made with salt.md* line; then *Thank you!*,
+same fields, a submit button and a *Made with dworkspace* line; then *Thank you!*,
 *Your answer has been submitted.* and a **Send another answer** button. The
 heading is the form's own if it has one and **the collection's name otherwise**,
 so give the form a heading when the collection is called something you would not

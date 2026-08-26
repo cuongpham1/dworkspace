@@ -8,11 +8,11 @@ const { contextBridge, ipcRenderer } = require('electron');
 // looks tidy and hands a remote page the whole IPC surface: whatever the main
 // process ever adds becomes callable by the server, and by anything that gets
 // a script into it.
-contextBridge.exposeInMainWorld('salt', {
-  getServer: () => ipcRenderer.invoke('salt:getServer'),
-  setServer: (url) => ipcRenderer.invoke('salt:setServer', url),
-  cancel: () => ipcRenderer.invoke('salt:cancel'),
-  forget: () => ipcRenderer.invoke('salt:forget'),
+contextBridge.exposeInMainWorld('dworkspace', {
+  getServer: () => ipcRenderer.invoke('dworkspace:getServer'),
+  setServer: (url) => ipcRenderer.invoke('dworkspace:setServer', url),
+  cancel: () => ipcRenderer.invoke('dworkspace:cancel'),
+  forget: () => ipcRenderer.invoke('dworkspace:forget'),
 });
 
 // ---- "which instance is this?" on the sign-in screen ----------------------
@@ -26,11 +26,11 @@ contextBridge.exposeInMainWorld('salt', {
 // Only there. On a signed-in workspace this would be permanent clutter for
 // something you need about twice.
 //
-// The line is injected rather than built into salt.md's own login page for the
+// The line is injected rather than built into dworkspace's own login page for the
 // reason the window CSS taught: the app must not need a matching server. This
 // works against every version, including ones released before the app existed.
 
-const SWITCH_ID = 'salt-desktop-switch';
+const SWITCH_ID = 'dworkspace-desktop-switch';
 const SWITCH_CSS = `
 #${SWITCH_ID} {
   position: fixed; left: 0; right: 0; bottom: 22px;
@@ -57,7 +57,7 @@ async function syncSwitchLine() {
   }
   if (existing) return;
 
-  const server = await ipcRenderer.invoke('salt:getServer');
+  const server = await ipcRenderer.invoke('dworkspace:getServer');
   if (!server || !document.querySelector('.login-card, .login-wrap')) return;
   if (document.getElementById(SWITCH_ID)) return;
 
@@ -75,7 +75,7 @@ async function syncSwitchLine() {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.textContent = 'Change';
-  btn.addEventListener('click', () => void ipcRenderer.invoke('salt:openConnect'));
+  btn.addEventListener('click', () => void ipcRenderer.invoke('dworkspace:openConnect'));
   bar.append(label, btn);
   (document.body || document.documentElement).append(style, bar);
 }
@@ -98,7 +98,7 @@ else document.addEventListener('DOMContentLoaded', watch);
 //
 // THE APP CARRIES THIS FIX, not the server.
 //
-// The first version put the rules in salt.md's own stylesheet, which was wrong
+// The first version put the rules in dworkspace's own stylesheet, which was wrong
 // in a way that only shows up later: the app would then look broken against
 // every instance that has not been updated yet — and pointing this app at an
 // older server is the normal case, not the exception. A window's own layout is
@@ -156,9 +156,9 @@ function apply() {
   if (!html) return;
   html.setAttribute('data-desktop', process.platform === 'darwin' ? 'mac' : 'other');
   if (process.platform !== 'darwin') return;
-  if (document.getElementById('salt-desktop-css')) return;
+  if (document.getElementById('dworkspace-desktop-css')) return;
   const style = document.createElement('style');
-  style.id = 'salt-desktop-css';
+  style.id = 'dworkspace-desktop-css';
   style.textContent = DESKTOP_CSS;
   (document.head || html).appendChild(style);
 }
@@ -184,7 +184,7 @@ document.addEventListener('DOMContentLoaded', apply);
 // way the moment the connection is back. Anything more is a cache, and a cache
 // that silently disagrees with the server is a worse problem than this one.
 
-const OFFLINE_ID = 'salt-desktop-offline';
+const OFFLINE_ID = 'dworkspace-desktop-offline';
 const OFFLINE_CSS = `
 #${OFFLINE_ID} {
   position: fixed;
@@ -222,7 +222,7 @@ function showOffline() {
   title.textContent = 'You are offline';
   const body = document.createElement('p');
   body.textContent =
-    'salt.md is a window onto your server, so it needs a connection to show or save anything. Nothing you did is lost — it is on the server, exactly as you left it.';
+    'dworkspace is a window onto your server, so it needs a connection to show or save anything. Nothing you did is lost — it is on the server, exactly as you left it.';
   const hint = document.createElement('span');
   hint.textContent = 'This closes by itself when the connection is back.';
   box.append(title, body, hint);

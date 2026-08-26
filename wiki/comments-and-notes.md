@@ -1,6 +1,6 @@
 # Comments and notes
 
-A page in salt.md carries two separate records beside its text, and they are not
+A page in dworkspace carries two separate records beside its text, and they are not
 variations of one thing. **Comments** are a conversation: written to be read by
 someone else, answered, and eventually ticked off. The **raw trail** is
 evidence: dated one-liners written while the work was happening, which nobody —
@@ -164,7 +164,7 @@ are the same thing. See [Collections](collections.md).)
 
 ### What it is
 
-Every write in salt.md is an act of authorship — a title, a place in the tree,
+Every write in dworkspace is an act of authorship — a title, a place in the tree,
 an icon. That is right for a document and it is a hurdle a note taken in the
 middle of a problem does not clear, so the write-up happens afterwards, and by
 then the author knows how it ended. The abandoned approach, the dead end and the

@@ -70,12 +70,12 @@ password on.
 | **Two-factor (2FA)** | the second factor for signing in |
 | **Language and time** | five settings — see [Language and time](language-and-time.md) |
 | **Notes mode** | the note list as a third column — see [The interface](interface.md) |
-| **Salt fonts** | the fonts shipped with the program, on or off |
+| **Dworkspace fonts** | the fonts shipped with the program, on or off |
 | **Manage users** | instance admins only |
 | **Instance settings** | instance admins only |
 | **Sign out** | ends this session |
 
-**Notes mode** and **Salt fonts** carry a dot that lights up when they are on.
+**Notes mode** and **Dworkspace fonts** carry a dot that lights up when they are on.
 Both are remembered in the browser you set them in, not on your account, so they
 do not follow you to another machine. Notes mode takes effect on desktop widths
 only.
@@ -270,7 +270,7 @@ again:*, with **Copy token** beside it. Below it sits a ready-made connection
 line and **Copy MCP command**:
 
 ```
-claude mcp add --transport http salt https://salt.example.com/mcp/salt_1a2b3c…
+claude mcp add --transport http dworkspace https://dworkspace.example.com/mcp/dworkspace_1a2b3c…
 ```
 
 The address is the instance's public one when it has a domain or a tunnel

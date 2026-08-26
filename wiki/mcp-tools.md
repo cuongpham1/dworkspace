@@ -1,6 +1,6 @@
 # MCP tools
 
-salt.md speaks MCP (Model Context Protocol) on one endpoint, `/mcp`, and offers
+dworkspace speaks MCP (Model Context Protocol) on one endpoint, `/mcp`, and offers
 **33 tools**. This page is the complete reference: every tool, every parameter,
 what comes back, and what can go wrong. It is written for the person wiring an
 agent up and for the agent itself.
@@ -44,7 +44,7 @@ Methods answered: `initialize`, `ping`, `tools/list`, `tools/call`, and
 top-level array — are refused with "batch requests are not supported". Anything
 else comes back as "method not found".
 
-`initialize` returns the server name `salt.md`, its version, an `icons` array
+`initialize` returns the server name `dworkspace`, its version, an `icons` array
 and an instructions string. The icons are this instance's logo — an embedded SVG
 that survives a strict content policy, plus an absolute link to the PNG for
 clients that dislike SVG — so a client can show the instance instead of a
@@ -402,7 +402,7 @@ planted in somebody else's document.
 A Markdown link whose target is a page of this instance becomes a real page
 link — it shows up in `get_links` and in the graph. Two forms count: the bare
 path `/p/<32-hex-id>`, and an absolute URL ending in it,
-`https://salt.example.com/p/<32-hex-id>`. Nothing else does. In particular a
+`https://dworkspace.example.com/p/<32-hex-id>`. Nothing else does. In particular a
 **public share link is not a page link**: the address `set_sharing` hands back
 is `/public/<token>`, and pasted as a Markdown target it stays an ordinary link
 that navigates and leaves the page an island. Link to the page id, not to the
@@ -1004,7 +1004,7 @@ behind.
 
 `public: true` mints a link anyone can open **without signing in**. Only do it
 when the user asked. Returns `{page_id, url, expires, note}`, the url being
-`https://salt.example.com/public/<token>` on your own domain. That address is
+`https://dworkspace.example.com/public/<token>` on your own domain. That address is
 for a human to open — it is not the form of link that turns into a page link
 when you write it into Markdown (see `create_page`).
 
@@ -1101,7 +1101,7 @@ dismiss it in the browser`.
 
 ### import_url
 
-Import records from a JSON URL. Salt fetches and writes them itself, so **none
+Import records from a JSON URL. Dworkspace fetches and writes them itself, so **none
 of the content passes through the agent**.
 
 | Parameter | Type | Required |
@@ -1154,7 +1154,7 @@ mapping.
 Only public hosts can be fetched: loopback, private ranges and link-local
 addresses — where cloud metadata services live — are refused. A self-hosted
 source needs the operator to start the server with
-`SALT_IMPORT_ALLOW_PRIVATE=1`; an agent cannot open that door.
+`DWORKSPACE_IMPORT_ALLOW_PRIVATE=1`; an agent cannot open that door.
 
 Returns immediately with `{job_id, status, total, target, note, next}`. Ceilings:
 64 MB of fetched source, 20000 records.

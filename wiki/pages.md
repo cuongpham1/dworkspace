@@ -1,6 +1,6 @@
 # Pages
 
-A page is the unit everything in salt.md is made of. It carries a title, an
+A page is the unit everything in dworkspace is made of. It carries a title, an
 optional icon and cover, an optional one-line description, tags, a body of
 blocks, and any number of pages filed underneath it. A collection (a database)
 is a page too, and so is every row inside one — which is why a row can have
@@ -193,7 +193,7 @@ drawn as a proper tree item rather than as a row, so it keeps its full ⋯ menu.
 
 ## Tabs
 
-salt.md keeps several pages open at once, like an editor rather than like a web
+dworkspace keeps several pages open at once, like an editor rather than like a web
 page. Three ways to open one in a new tab:
 
 - **Open in new tab** — the first entry of the sidebar ⋯ menu.

@@ -14,7 +14,7 @@ Layout, one directory per blueprint, named after its id in `library.json`:
 
 ```
 library.json          the shelf: id, title, one line, icon, colour, price
-<id>/salt-workspace.json   manifest — name, icon and THE RULES
+<id>/dworkspace-workspace.json   manifest — name, icon and THE RULES
 <id>/pages.json            the databases with their schemas and views
 <id>/tags.json             tag colours (optional)
 <id>/files/…               uploads (optional; keep it empty, this ships in the binary)

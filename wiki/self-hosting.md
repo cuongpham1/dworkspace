@@ -1,12 +1,12 @@
 # Self-hosting
 
 This page is for whoever runs the server. It covers every way to install
-salt.md, every environment variable and what it defaults to, how the process
+dworkspace, every environment variable and what it defaults to, how the process
 decides how much work it can afford, what the startup log is telling you, how it
 defends itself against somebody guessing passwords, and how to back up, restore
 and update without losing anything.
 
-salt.md is **one process**. The frontend is compiled into the binary, SQLite is
+dworkspace is **one process**. The frontend is compiled into the binary, SQLite is
 a pure-Go library (the builds have CGO switched off), and nothing else has to be
 running: no database server, no Node, no Redis, no reverse proxy unless you want
 one. Everything the instance owns lives in one directory.
@@ -19,17 +19,17 @@ one. Everything the instance owns lives in one directory.
 curl -fsSL https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
 ```
 
-That installs it and starts it, and prints the address to open. `SALT_NO_START=1`
+That installs it and starts it, and prints the address to open. `DWORKSPACE_NO_START=1`
 installs without starting, and a non-interactive run never starts it, so this is
 safe in a provisioning script.
 
 **On a Linux server it installs a service.** Run as root on a machine with
 systemd, the one-liner does not leave a process in your terminal: it creates the
-system account `salt`, writes `/etc/systemd/system/salt.service`, keeps the data
-in `/var/lib/salt` and enables the unit. The instance then starts on boot, comes
+system account `dworkspace`, writes `/etc/systemd/system/dworkspace.service`, keeps the data
+in `/var/lib/dworkspace` and enables the unit. The instance then starts on boot, comes
 back by itself after a crash, and your shell is free. Running it again later
 replaces the binary and restarts the service, so the same command is also the
-upgrade. `SALT_NO_SERVICE=1` opts out.
+upgrade. `DWORKSPACE_NO_SERVICE=1` opts out.
 
 Anywhere else — a Mac, a machine without systemd, or without root — it runs in
 the foreground, which is what you want when you are only trying it out.
@@ -44,7 +44,7 @@ wget -qO- https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
 ```
 
 The script reads `uname` and picks the matching prebuilt binary — Linux and
-macOS, x86-64 and arm64. It installs to `/usr/local/bin/salt` when that
+macOS, x86-64 and arm64. It installs to `/usr/local/bin/dworkspace` when that
 directory is writable, uses `sudo` when it is not, and falls back to
 `~/.local/bin` when there is no `sudo` either. It then prints how to run the
 binary, and warns you when the directory it chose is not on your `PATH`.
@@ -54,7 +54,7 @@ Two variables change what it does:
 | Variable | Effect |
 | --- | --- |
 | `BIN_DIR=/path` | install there instead of the automatic choice |
-| `SALT_VERSION=v1.6.13` | download that release tag instead of `latest` |
+| `DWORKSPACE_VERSION=v1.6.13` | download that release tag instead of `latest` |
 
 The tag needs its leading `v` — it goes into the download URL unchanged.
 
@@ -62,22 +62,22 @@ The installer does **not** verify a checksum. If that matters to you, take the
 manual route under [Updating](#updating), which does.
 
 Windows is not covered by the script (it stops with "Unsupported OS"), but a
-`salt-windows-amd64.exe` is published with every release — download it by hand.
+`dworkspace-windows-amd64.exe` is published with every release — download it by hand.
 
 ### Docker
 
 ```sh
-docker run -d --name salt --restart unless-stopped \
-  -p 8420:8420 -v salt-data:/data --memory=4g \
+docker run -d --name dworkspace --restart unless-stopped \
+  -p 8420:8420 -v dworkspace-data:/data --memory=4g \
   ghcr.io/saltmd/salt.md:latest
 ```
 
 The image is published for `linux/amd64` and `linux/arm64`. It runs as an
-unprivileged user, sets `SALT_ADDR=:8420` and `SALT_DATA=/data`, declares
+unprivileged user, sets `DWORKSPACE_ADDR=:8420` and `DWORKSPACE_DATA=/data`, declares
 `/data` as a volume and exposes 8420.
 
 **Set `--memory`.** A container with no limit cannot tell how much of the host
-it is meant to get, so salt.md assumes a small machine — see
+it is meant to get, so dworkspace assumes a small machine — see
 [Memory](#memory-and-what-it-changes) for what that costs you.
 
 ### Docker Compose
@@ -91,16 +91,16 @@ docker compose up -d
 By default it **builds the image from the source in that directory** (`build: .`).
 To use the published image instead, uncomment the `image:` line and comment out
 `build:`. The rest of the file sets `mem_limit: 4g`, the named volume
-`salt-data` mounted at `/data`, `SALT_ADDR` and `SALT_DATA`, and
+`dworkspace-data` mounted at `/data`, `DWORKSPACE_ADDR` and `DWORKSPACE_DATA`, and
 `restart: unless-stopped`. Two entries are commented out and waiting for you:
-`SALT_MEMORY_MB`, and the pair `SALT_TLS_CERT` / `SALT_TLS_KEY` for serving
+`DWORKSPACE_MEMORY_MB`, and the pair `DWORKSPACE_TLS_CERT` / `DWORKSPACE_TLS_KEY` for serving
 HTTPS directly — you supply the mount for the certificate files yourself.
 
 ### From source
 
 ```sh
 make build     # frontend, then backend
-./salt
+./dworkspace
 ```
 
 Needs Go 1.25, which is what `go.mod` requires. The frontend is built with
@@ -116,28 +116,28 @@ skips it can ship a broken string catalogue.
 
 ### As a systemd service
 
-The repository ships a unit at `deploy/salt.service` **and an installer for
-it**. With a `salt` binary in hand, run as root:
+The repository ships a unit at `deploy/dworkspace.service` **and an installer for
+it**. With a `dworkspace` binary in hand, run as root:
 
 ```sh
-./deploy/install.sh ./salt
+./deploy/install.sh ./dworkspace
 ```
 
-That creates the system account `salt`, installs the binary to `/opt/salt/salt`,
-creates `/opt/salt/data` owned by that account, installs the unit into
-`/etc/systemd/system/salt.service`, and runs `systemctl enable --now salt`. It
-finishes by printing "salt.md is running on port 80."
+That creates the system account `dworkspace`, installs the binary to `/opt/dworkspace/dworkspace`,
+creates `/opt/dworkspace/data` owned by that account, installs the unit into
+`/etc/systemd/system/dworkspace.service`, and runs `systemctl enable --now dworkspace`. It
+finishes by printing "dworkspace is running on port 80."
 
 The unit itself:
 
 ```ini
 [Service]
-User=salt
-Group=salt
-WorkingDirectory=/opt/salt
-ExecStart=/opt/salt/salt
-Environment=SALT_ADDR=:80
-Environment=SALT_DATA=/opt/salt/data
+User=dworkspace
+Group=dworkspace
+WorkingDirectory=/opt/dworkspace
+ExecStart=/opt/dworkspace/dworkspace
+Environment=DWORKSPACE_ADDR=:80
+Environment=DWORKSPACE_DATA=/opt/dworkspace/data
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 Restart=on-failure
 RestartSec=2
@@ -160,7 +160,7 @@ Open the address the server printed and you get the setup screen:
 Whoever completes that becomes the **instance owner**, gets a workspace, and is
 its admin. The screen is available exactly once: with an account already in the
 database, setup answers "setup already completed". A fresh data directory also
-gets one seeded page, *Welcome to salt.md* — deleted, it does not come back on
+gets one seeded page, *Welcome to dworkspace* — deleted, it does not come back on
 the next start.
 
 From there, [Administration](administration.md) covers who may sign up,
@@ -173,60 +173,60 @@ The binary takes a handful of subcommands before it decides to be a server:
 
 | Command | What it does |
 | --- | --- |
-| `salt` | start the server |
-| `salt backup [file]` | write a consistent archive (default `salt-backup.tar.gz`) |
-| `salt restore <file>` | unpack an archive into the data directory |
-| `salt version` | print the version and exit |
-| `salt fix-notion-rows` | one-time cleanup of Notion-imported row bodies |
+| `dworkspace` | start the server |
+| `dworkspace backup [file]` | write a consistent archive (default `dworkspace-backup.tar.gz`) |
+| `dworkspace restore <file>` | unpack an archive into the data directory |
+| `dworkspace version` | print the version and exit |
+| `dworkspace fix-notion-rows` | one-time cleanup of Notion-imported row bodies |
 
 Three things about this list are easy to get wrong.
 
 **Only those four words are subcommands.** Anything else — including
-`salt --version` — is not recognised, and the process goes on to **start a
+`dworkspace --version` — is not recognised, and the process goes on to **start a
 server**. On a machine where the service is already running that means a second
 instance on the same port, and a command that never returns. Read the version
-from the log, from `salt version`, or from `/api/health`.
+from the log, from `dworkspace version`, or from `/api/health`.
 
-**The subcommands read `SALT_DATA` too.** `salt backup` run from cron without
-the same `SALT_DATA` as the service looks in `./data`, finds nothing, and stops
+**The subcommands read `DWORKSPACE_DATA` too.** `dworkspace backup` run from cron without
+the same `DWORKSPACE_DATA` as the service looks in `./data`, finds nothing, and stops
 with "no database at …". A systemd unit's `Environment=` lines are not inherited
 by your shell, so set the variable on every command line.
 
 **Only two of them need the server stopped.** `fix-notion-rows` opens the
 database directly and takes its single connection. `restore` needs it stopped
-for a different reason: a running server holds `salt.db` open and keeps writing
+for a different reason: a running server holds `dworkspace.db` open and keeps writing
 to the very file the archive is replacing. `backup` is designed to run beside a
 live instance, and `version` touches nothing.
 
 ## Configuration
 
-Every variable carries the `SALT_` prefix. The prefix is not optional: a bare
-`DATA=/srv/salt` is silently ignored and the server writes into `./data`.
+Every variable carries the `DWORKSPACE_` prefix. The prefix is not optional: a bare
+`DATA=/srv/dworkspace` is silently ignored and the server writes into `./data`.
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `SALT_ADDR` | `:8420` | listen address |
-| `SALT_DATA` | `./data` | data directory — database and uploads |
-| `SALT_MEMORY_MB` | detected | how much memory to assume (below) |
-| `SALT_TRASH_DAYS` | `30` | days before trashed pages are purged; `0` disables |
-| `SALT_TLS_CERT` | empty | certificate file — serves HTTPS directly |
-| `SALT_TLS_KEY` | empty | matching key file |
-| `SALT_RESTORE_FORCE` | empty | any value lets `salt restore` overwrite an existing database |
-| `SALT_IMPORT_ALLOW_PRIVATE` | empty | must be exactly `1`; lets the URL importer reach private addresses |
-| `SALT_UPDATE_CHECK` | empty | set to `0` to stop the daily check for a newer release |
+| `DWORKSPACE_ADDR` | `:8420` | listen address |
+| `DWORKSPACE_DATA` | `./data` | data directory — database and uploads |
+| `DWORKSPACE_MEMORY_MB` | detected | how much memory to assume (below) |
+| `DWORKSPACE_TRASH_DAYS` | `30` | days before trashed pages are purged; `0` disables |
+| `DWORKSPACE_TLS_CERT` | empty | certificate file — serves HTTPS directly |
+| `DWORKSPACE_TLS_KEY` | empty | matching key file |
+| `DWORKSPACE_RESTORE_FORCE` | empty | any value lets `dworkspace restore` overwrite an existing database |
+| `DWORKSPACE_IMPORT_ALLOW_PRIVATE` | empty | must be exactly `1`; lets the URL importer reach private addresses |
+| `DWORKSPACE_UPDATE_CHECK` | empty | set to `0` to stop the daily check for a newer release |
 
 Notes worth having before you hit them:
 
-- **TLS needs both halves.** With only `SALT_TLS_CERT` set and no key, neither
+- **TLS needs both halves.** With only `DWORKSPACE_TLS_CERT` set and no key, neither
   TLS branch applies and the server listens as plain HTTP without complaining.
-- **`SALT_TLS_CERT` also switches off the built-in Let's Encrypt path**, even
+- **`DWORKSPACE_TLS_CERT` also switches off the built-in Let's Encrypt path**, even
   when the certificate setting in the admin dialog is active. One or the other.
-- **`SALT_TRASH_DAYS` loses to the admin setting.** The retention is read from
+- **`DWORKSPACE_TRASH_DAYS` loses to the admin setting.** The retention is read from
   the setting first, the variable second, and 30 last. The Instance settings
   dialog shows the effective number in *Empty the trash automatically after
   (days, 0 = never)* and writes it as a setting when you press **Save** — after
   which the variable no longer has any effect.
-- **`SALT_IMPORT_ALLOW_PRIVATE` opens a door that is shut on purpose.**
+- **`DWORKSPACE_IMPORT_ALLOW_PRIVATE` opens a door that is shut on purpose.**
   Importing a page from a URL refuses every address that is not publicly
   routable: loopback, private ranges, link-local (which is where the cloud
   metadata endpoint `169.254.169.254` lives), multicast. Set the variable to `1`
@@ -242,15 +242,15 @@ Notes worth having before you hit them:
 
 ## Where things live
 
-Everything is under `SALT_DATA`. The admin dialog shows the **configured** path
+Everything is under `DWORKSPACE_DATA`. The admin dialog shows the **configured** path
 as *Data directory* under Instance settings → **Maintenance** — as given, not
 resolved, so an instance started with the default shows `./data` there rather
 than an absolute path.
 
 | Path | What it is |
 | --- | --- |
-| `salt.db` | the database — pages, workspaces, accounts, the search index |
-| `salt.db-wal`, `salt.db-shm` | SQLite's write-ahead log and its shared index |
+| `dworkspace.db` | the database — pages, workspaces, accounts, the search index |
+| `dworkspace.db-wal`, `dworkspace.db-shm` | SQLite's write-ahead log and its shared index |
 | `files/` | every upload, one file each under a generated id, served under `/files/` |
 | `bin/` | `cloudflared`, downloaded on demand when you start a tunnel |
 | `certs/` | Let's Encrypt cache, only when the built-in HTTPS is active |
@@ -261,15 +261,15 @@ lives in the database, not on disk — see [Files](files.md).
 
 The database runs in WAL mode on a **single connection**. That is why
 `fix-notion-rows` and `restore` want the server stopped while `backup` can run
-beside it, and why a recent change may be sitting in `salt.db-wal` rather than
-in `salt.db` — see [Backing up](#backing-up).
+beside it, and why a recent change may be sitting in `dworkspace.db-wal` rather than
+in `dworkspace.db` — see [Backing up](#backing-up).
 
 ## Memory, and what it changes
 
-salt.md sizes its most expensive work — extracting text out of PDFs so it is
+dworkspace sizes its most expensive work — extracting text out of PDFs so it is
 searchable — to the memory it believes it has. It looks in this order:
 
-1. `SALT_MEMORY_MB`, if it is a positive number.
+1. `DWORKSPACE_MEMORY_MB`, if it is a positive number.
 2. The container's cgroup limit (`memory.max` on cgroup v2,
    `memory.limit_in_bytes` on v1).
 3. `/proc/meminfo`.
@@ -300,7 +300,7 @@ book is not worth the database weight, so a long document is searchable by its
 opening rather than throughout. And the upload limit is a setting
 (*Max. file size per upload (MB)*), not a function of memory.
 
-salt.md also tells Go's garbage collector where the ceiling is — 80 % of the
+dworkspace also tells Go's garbage collector where the ceiling is — 80 % of the
 figure — so the heap does not grow past a container limit and get the process
 killed.
 
@@ -309,7 +309,7 @@ listed, previewed and downloadable exactly as usual; only its text stays out of
 the search index. That is the whole cost, and it is why the limit scales itself
 instead of asking you.
 
-Set `SALT_MEMORY_MB` by hand in one case: **nested containers**, such as Docker
+Set `DWORKSPACE_MEMORY_MB` by hand in one case: **nested containers**, such as Docker
 inside an LXC container. There the cgroup file says "no limit" and
 `/proc/meminfo` reports the outermost host, so neither source knows the truth.
 Elsewhere, `--memory` on the container is the better answer because it is also
@@ -342,20 +342,20 @@ they hang off a workspace or an account rather than a page. See
 The conclusion of the section above. If a PDF is not searchable, this line says
 why. It is **missing entirely when the memory figure cannot be read** — on
 macOS, for instance — and in that case the conservative defaults apply: 10 MB
-per PDF, one extraction at a time. Setting `SALT_MEMORY_MB` brings the line
+per PDF, one extraction at a time. Setting `DWORKSPACE_MEMORY_MB` brings the line
 back.
 
 **`memory: no container limit is set, so this assumes a small instance. Run with --memory=<size> …`**
 Printed only when the process is in a container, has no cgroup limit and no
-`SALT_MEMORY_MB`. It is the 2 GiB assumption announcing itself.
+`DWORKSPACE_MEMORY_MB`. It is the 2 GiB assumption announcing itself.
 
-**`memory: SALT_MEMORY_MB="…" is not a positive number of megabytes — ignoring it`**
+**`memory: DWORKSPACE_MEMORY_MB="…" is not a positive number of megabytes — ignoring it`**
 A typo in the variable. Detection continues as if it were unset. This one is
 written whenever the figure is worked out, which happens before anything else at
 startup — so it appears above every other line here, and again later whenever a
 PDF is sized up.
 
-**`salt.md 1.6.16 listening on :8420 (data: /opt/salt/data)`**
+**`dworkspace 1.6.16 listening on :8420 (data: /opt/dworkspace/data)`**
 The server is up. Two variants: `(TLS, data: …)` when you supplied a certificate
 pair, and `(auto-HTTPS for notes.example.com, data: …)` when the built-in
 Let's Encrypt path is active — that one listens on `:443` and answers the ACME
@@ -442,10 +442,10 @@ backups, and "who did what" belongs in the audit log behind a login — see
 [History and audit](history-and-audit.md).
 
 That format is a parsing contract, and `docs/fail2ban/` in the repository is
-what reads it: a filter (`salt.conf`) and a jail (`jail.local`, 20 hits in
+what reads it: a filter (`dworkspace.conf`) and a jail (`jail.local`, 20 hits in
 10 minutes, banned for an hour). Copy them to `/etc/fail2ban/filter.d/` and
 `/etc/fail2ban/jail.d/`, reload, and check the jail with
-`fail2ban-client status salt`. The in-process limit always works and stops when
+`fail2ban-client status dworkspace`. The in-process limit always works and stops when
 the process does; the jail puts the ban in the firewall, where it costs the
 attacker a TCP connection instead of a request.
 
@@ -462,7 +462,7 @@ matches nothing looks exactly like a jail with nothing to do.
 
 ## Backing up
 
-Two things need saving, and they are both under `SALT_DATA`: the database and
+Two things need saving, and they are both under `DWORKSPACE_DATA`: the database and
 the `files/` directory. Nothing else in that directory is irreplaceable.
 
 **Use the built-in command.** It takes a transactionally consistent snapshot of
@@ -470,12 +470,12 @@ the database (`VACUUM INTO`, so anything still in the write-ahead log is
 included) and adds every upload, into one gzip'd tar:
 
 ```sh
-SALT_DATA=/opt/salt/data salt backup /var/backups/salt-$(date +%F).tar.gz
+DWORKSPACE_DATA=/opt/dworkspace/data dworkspace backup /var/backups/dworkspace-$(date +%F).tar.gz
 ```
 
 This is **safe against a running instance** — it opens its own read connection,
 which WAL mode allows. That makes it a cron job rather than an outage. The admin
-dialog says the same: *"For automatic backups, run `./salt backup` from cron."*
+dialog says the same: *"For automatic backups, run `./dworkspace backup` from cron."*
 
 Watch the free space on the **destination** filesystem. The snapshot is written
 uncompressed next to the destination as `<destination>.db.tmp` first and only
@@ -484,7 +484,7 @@ archive. The temporary file is removed either way.
 
 **Or download one from the browser.** Instance settings → Maintenance →
 **Download backup (.tar.gz)**. The file is named
-`salt-backup-<date>-<time>.tar.gz`. This is **owner-only**, not admin-only:
+`dworkspace-backup-<date>-<time>.tar.gz`. This is **owner-only**, not admin-only:
 "Only the owner can download an instance backup — it contains every workspace."
 An admin who manages accounts does not get everybody's content by pressing a
 button.
@@ -498,10 +498,10 @@ it back. See [Administration](administration.md).
 command on the machine, so an operator who only ever uses the interface has no
 recovery path. Make sure somebody has shell access before you need it.
 
-**If you insist on copying by hand, stop the server first.** Copying `salt.db`
+**If you insist on copying by hand, stop the server first.** Copying `dworkspace.db`
 on its own while the server is writing gives you a stale database, because the
-recent changes are still in `salt.db-wal`. Copy `salt.db`, `salt.db-wal` and
-`salt.db-shm` together, or conclude nothing from what you got. This is the
+recent changes are still in `dworkspace.db-wal`. Copy `dworkspace.db`, `dworkspace.db-wal` and
+`dworkspace.db-shm` together, or conclude nothing from what you got. This is the
 single most common way a "backup" turns out to be worthless.
 
 A backup is a clone of the instance. To move *content* somewhere else — a page,
@@ -513,21 +513,21 @@ export](import-export.md) covers them.
 ## Restoring
 
 ```sh
-systemctl stop salt
-SALT_DATA=/opt/salt/data salt restore /var/backups/salt-2026-08-07.tar.gz
-systemctl start salt
+systemctl stop dworkspace
+DWORKSPACE_DATA=/opt/dworkspace/data dworkspace restore /var/backups/dworkspace-2026-08-07.tar.gz
+systemctl start dworkspace
 ```
 
-The server must be stopped: it holds `salt.db` open and would keep writing to
+The server must be stopped: it holds `dworkspace.db` open and would keep writing to
 the very file the archive replaces. (The restore itself never opens the
 database — it only unpacks the archive.)
 
-It **refuses to overwrite**: with a `salt.db` already in the directory you get
-"…/salt.db already exists; set SALT_RESTORE_FORCE=1 to overwrite". That guard is
+It **refuses to overwrite**: with a `dworkspace.db` already in the directory you get
+"…/dworkspace.db already exists; set DWORKSPACE_RESTORE_FORCE=1 to overwrite". That guard is
 there because the mistake it prevents is unrecoverable. Any non-empty value of
 the variable lifts it.
 
-Restoring drops any stale `salt.db-wal` and `salt.db-shm` first, so the restored
+Restoring drops any stale `dworkspace.db-wal` and `dworkspace.db-shm` first, so the restored
 database is never mixed with journal state from the instance it replaced, and it
 rejects an archive containing a path that points outside the directory.
 
@@ -544,32 +544,32 @@ from), and a container image on GHCR tagged both with the version and as
 `latest`.
 
 **Installed with the script:** re-run it. Pin with
-`SALT_VERSION=v1.6.13` if you do not want the newest.
+`DWORKSPACE_VERSION=v1.6.13` if you do not want the newest.
 
 **By hand, with the checksum verified:**
 
 ```sh
-mkdir -p /tmp/salt-1.6.16 && cd /tmp/salt-1.6.16
-wget -O salt-linux-amd64 \
-  https://github.com/saltmd/salt.md/releases/download/v1.6.16/salt-linux-amd64
+mkdir -p /tmp/dworkspace-1.6.16 && cd /tmp/dworkspace-1.6.16
+wget -O dworkspace-linux-amd64 \
+  https://github.com/saltmd/salt.md/releases/download/v1.6.16/dworkspace-linux-amd64
 wget -O SHA256SUMS.txt \
   https://github.com/saltmd/salt.md/releases/download/v1.6.16/SHA256SUMS.txt
-grep salt-linux-amd64 SHA256SUMS.txt | sha256sum -c -
+grep dworkspace-linux-amd64 SHA256SUMS.txt | sha256sum -c -
 
-systemctl stop salt
-SALT_DATA=/opt/salt/data /opt/salt/salt backup /var/backups/salt-before-1.6.16.tar.gz
-cp -a /opt/salt/salt /opt/salt/salt.bak
-install -m 755 salt-linux-amd64 /opt/salt/salt
-systemctl start salt
+systemctl stop dworkspace
+DWORKSPACE_DATA=/opt/dworkspace/data /opt/dworkspace/dworkspace backup /var/backups/dworkspace-before-1.6.16.tar.gz
+cp -a /opt/dworkspace/dworkspace /opt/dworkspace/dworkspace.bak
+install -m 755 dworkspace-linux-amd64 /opt/dworkspace/dworkspace
+systemctl start dworkspace
 ```
 
-The `SALT_DATA=` on the backup line is not decoration. That shell is sitting in
+The `DWORKSPACE_DATA=` on the backup line is not decoration. That shell is sitting in
 the download directory and knows nothing about the unit's `Environment=` lines,
-so without it the command looks in `/tmp/salt-1.6.16/data` and stops with
+so without it the command looks in `/tmp/dworkspace-1.6.16/data` and stops with
 "no database at …".
 
 Download into a **fresh, empty directory**. `wget` without `-O` does not
-overwrite an existing file — it writes `salt-linux-amd64.1` beside it — and a
+overwrite an existing file — it writes `dworkspace-linux-amd64.1` beside it — and a
 checksum check then happily verifies the old file against the old sums file and
 reports success. Keeping the previous binary next to the new one is the whole
 rollback plan, and it takes one line to use.
@@ -589,7 +589,7 @@ work before it listens. Skipping versions is fine; an instance can migrate
 across several releases in one start.
 
 **Verify by behaviour, not by the version string.** A mislabelled build reads
-exactly like a correct one. Compare `sha256sum /opt/salt/salt` against the
+exactly like a correct one. Compare `sha256sum /opt/dworkspace/dworkspace` against the
 published `SHA256SUMS.txt`, or pick something the new version has and the old
 does not and check for that. The version string is the last thing to trust.
 
@@ -601,7 +601,7 @@ below is in Instance settings → **Domain & proxy**;
 full, including why the public base URL has to be set whichever you choose.
 
 **1 · Try it right away (quick tunnel).** One button, **Start quick tunnel**, no
-account and no domain: salt.md downloads the official `cloudflared` on first use
+account and no domain: dworkspace downloads the official `cloudflared` on first use
 and gives you a temporary `trycloudflare.com` address pointing at this instance.
 The dialog shows the URL with a **Copy** button beside it. The address changes
 every time you start it, which makes it right for showing somebody the instance
@@ -609,10 +609,10 @@ and wrong for anything permanent.
 
 **2 · Permanently, with your own domain (Cloudflare Tunnel).** Paste a tunnel
 token from a free Cloudflare account and press **Connect**. Nothing has to accept
-incoming connections, and salt.md restarts the tunnel by itself after a reboot.
+incoming connections, and dworkspace restarts the tunnel by itself after a reboot.
 
 **3 · Straight to HTTPS (no Cloudflare, e.g. a VPS).** Enter a hostname, tick
-**Active**, restart. salt.md fetches its own Let's Encrypt certificate and
+**Active**, restart. dworkspace fetches its own Let's Encrypt certificate and
 listens on 80 and 443. Needs the DNS A record pointing at the machine and both
 ports reachable.
 
@@ -632,8 +632,8 @@ reverse proxy*:
   port needed)** and **nginx**. Each has a copy button; nothing has to be typed
   out by hand.
 
-`SALT_TLS_CERT` and `SALT_TLS_KEY` are the fifth way: your own certificate pair,
-served directly by salt.md, no proxy and no Let's Encrypt.
+`DWORKSPACE_TLS_CERT` and `DWORKSPACE_TLS_KEY` are the fifth way: your own certificate pair,
+served directly by dworkspace, no proxy and no Let's Encrypt.
 
 ## When something is wrong
 

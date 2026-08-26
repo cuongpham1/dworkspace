@@ -1,14 +1,14 @@
 [Unit]
-Description=salt.md — lightweight open-source workspace
+Description=dworkspace — lightweight open-source workspace
 After=network.target
 
 [Service]
-User=salt
-Group=salt
-WorkingDirectory=/opt/salt
-ExecStart=/opt/salt/salt
-Environment=SALT_ADDR=:80
-Environment=SALT_DATA=/opt/salt/data
+User=dworkspace
+Group=dworkspace
+WorkingDirectory=/opt/dworkspace
+ExecStart=/opt/dworkspace/dworkspace
+Environment=DWORKSPACE_ADDR=:80
+Environment=DWORKSPACE_DATA=/opt/dworkspace/data
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 NoNewPrivileges=false
 Restart=on-failure

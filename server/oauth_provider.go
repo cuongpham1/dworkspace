@@ -7,13 +7,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
-// salt.md as an OAuth authorization server, so an agent can SIGN IN instead of
+// dworkspace as an OAuth authorization server, so an agent can SIGN IN instead of
 // carrying a key that never dies (OAuth 2.1 + the MCP authorization spec).
 //
 // WHY, in one paragraph, because the reason shapes every decision below. An API
@@ -101,7 +102,7 @@ func (s *Server) handleProtectedResourceMetadata(w http.ResponseWriter, r *http.
 		"resource":                 base + "/mcp",
 		"authorization_servers":    []string{base},
 		"bearer_methods_supported": []string{"header"},
-		"resource_name":            "salt.md",
+		"resource_name":            "dworkspace",
 	})
 }
 
@@ -166,7 +167,7 @@ func (s *Server) handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 	if len([]rune(name)) > 80 {
 		name = string([]rune(name)[:80])
 	}
-	id := "salt-" + randomToken(12)
+	id := "dworkspace-" + randomToken(12)
 	uris, _ := json.Marshal(body.RedirectURIs)
 
 	// A public client (PKCE only, no secret) is the normal case for the kind of
@@ -194,8 +195,16 @@ func (s *Server) handleOAuthRegister(w http.ResponseWriter, r *http.Request) {
 		out["client_secret"] = secret
 		out["token_endpoint_auth_method"] = "client_secret_post"
 	}
+	// Content-Type BEFORE WriteHeader, not after. WriteHeader flushes the header
+	// block, so writeJSON's own Set() lands too late and Go falls back to
+	// sniffing the body — which answered `text/plain; charset=utf-8`. RFC 7591
+	// §3.2.1 requires this response to be application/json, and a client strict
+	// about that rejects the registration and with it the whole connection.
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	writeJSON(w, out)
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		log.Printf("oauth register: %v", err)
+	}
 }
 
 // validRedirectURI keeps the obviously dangerous shapes out at registration
@@ -644,7 +653,7 @@ func (s *Server) handleOAuthRequestInfo(w http.ResponseWriter, r *http.Request) 
 		"clientId":   c.ID,
 		"workspaces": list,
 		// WHICH instance is being asked about. Without it the screen could be
-		// any salt.md anywhere — and "which server am I handing this to" is the
+		// any dworkspace anywhere — and "which server am I handing this to" is the
 		// first question somebody should be able to answer at a glance.
 		"instanceName": s.setting("instance_name", ""),
 		"host":         r.Host,

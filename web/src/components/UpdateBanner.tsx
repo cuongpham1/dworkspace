@@ -38,7 +38,7 @@ export default function UpdateBanner() {
 
   // Dismissal is per version, so the next release speaks up again rather than
   // being swallowed by a click somebody made months earlier.
-  const key = `salt-update-seen-${info.latest}`;
+  const key = `dworkspace-update-seen-${info.latest}`;
   let seen = false;
   try {
     seen = localStorage.getItem(key) === '1';
@@ -60,7 +60,7 @@ export default function UpdateBanner() {
     <div className="update-banner" role="status">
       <ArrowUpCircle size={14} />
       <span className="update-banner__text">
-        {t('salt.md {version} is out').replace('{version}', info.latest)}
+        {t('dworkspace {version} is out').replace('{version}', info.latest)}
       </span>
       <a
         className="update-banner__link"

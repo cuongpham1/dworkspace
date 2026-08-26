@@ -8,7 +8,7 @@ import { setFormatLocale, setFormatPrefs } from './format';
 //
 // Symbolic keys ('users.manage') were the other option and were rejected: when
 // a translation is missing, a symbolic key shows the user gibberish, while an
-// English key shows them English. salt.md is written in English first, so the
+// English key shows them English. dworkspace is written in English first, so the
 // fallback is always a correct sentence — a missing translation degrades to
 // "not translated yet", never to "broken".
 //
@@ -114,7 +114,7 @@ export function getPrefs(): Prefs {
  *  after a reload is not briefly in the wrong language while /api/me is still
  *  in flight — and so the login screen, where there is no account yet, comes up
  *  the way this person last had it. */
-const CACHE = 'salt-prefs';
+const CACHE = 'dworkspace-prefs';
 
 function cached(): Prefs {
   try {
@@ -125,7 +125,7 @@ function cached(): Prefs {
   }
   // Migration from the single key this replaces. Somebody who chose German
   // before W112 keeps German instead of being silently reset to the browser.
-  const old = localStorage.getItem('salt-locale');
+  const old = localStorage.getItem('dworkspace-locale');
   return old && old in LOCALES ? { language: old } : {};
 }
 
@@ -178,7 +178,7 @@ export async function applyPrefs(next: Prefs): Promise<void> {
   prefs = next ?? {};
   try {
     localStorage.setItem(CACHE, JSON.stringify(prefs));
-    localStorage.removeItem('salt-locale');
+    localStorage.removeItem('dworkspace-locale');
   } catch {
     /* private mode, quota — the account still has the settings */
   }
@@ -188,7 +188,7 @@ export async function applyPrefs(next: Prefs): Promise<void> {
 /** The tag to FORMAT with, which is not the same as the language to translate
  *  into.
  *
- *  salt.md ships one catalog per language ('en', 'de'), because writing one per
+ *  dworkspace ships one catalog per language ('en', 'de'), because writing one per
  *  region would mean maintaining British and American copies of the same
  *  sentences. But dates and numbers really are regional: bare 'en' means
  *  American to Intl, so an English-reading user in Dublin or Sydney would get

@@ -34,9 +34,9 @@
 // It needs a running instance to photograph — never a real one. Point it at a
 // throwaway with invented content:
 //
-//   SALT_SHOOT_URL=http://127.0.0.1:8421 \
-//   SALT_SHOOT_EMAIL=… SALT_SHOOT_PASSWORD=… \
-//   SALT_SHOOT_FRESH_URL=http://127.0.0.1:8422 \
+//   DWORKSPACE_SHOOT_URL=http://127.0.0.1:8421 \
+//   DWORKSPACE_SHOOT_EMAIL=… DWORKSPACE_SHOOT_PASSWORD=… \
+//   DWORKSPACE_SHOOT_FRESH_URL=http://127.0.0.1:8422 \
 //   node scripts/shoot-wiki.mjs
 //
 // The credentials come from the environment and never from the manifest: the
@@ -53,10 +53,10 @@ const repo = join(here, '../..');
 const manifestPath = join(repo, 'wiki/screenshots.json');
 const imgDir = join(repo, 'wiki/img');
 
-const BASE = process.env.SALT_SHOOT_URL ?? 'http://127.0.0.1:8421';
-const FRESH = process.env.SALT_SHOOT_FRESH_URL ?? '';
-const EMAIL = process.env.SALT_SHOOT_EMAIL ?? '';
-const PASSWORD = process.env.SALT_SHOOT_PASSWORD ?? '';
+const BASE = process.env.DWORKSPACE_SHOOT_URL ?? 'http://127.0.0.1:8421';
+const FRESH = process.env.DWORKSPACE_SHOOT_FRESH_URL ?? '';
+const EMAIL = process.env.DWORKSPACE_SHOOT_EMAIL ?? '';
+const PASSWORD = process.env.DWORKSPACE_SHOOT_PASSWORD ?? '';
 
 let chromium;
 try {
@@ -162,7 +162,7 @@ const failed = [];
 
 for (const shot of wanted) {
   if (shot.instance === 'fresh' && !FRESH) {
-    console.log(`  skip  ${shot.id} — needs SALT_SHOOT_FRESH_URL (an instance with no account yet)`);
+    console.log(`  skip  ${shot.id} — needs DWORKSPACE_SHOOT_FRESH_URL (an instance with no account yet)`);
     continue;
   }
   for (const theme of ['light', 'dark']) {

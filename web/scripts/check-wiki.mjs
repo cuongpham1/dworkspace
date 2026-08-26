@@ -131,7 +131,7 @@ for (const [file, text] of pages) {
 // The name class is covered by a written rule instead — see README.md — and by
 // the fact that examples here have to be obviously invented.
 
-// Subdomains of the documentation domains count too — `salt.example.com` is
+// Subdomains of the documentation domains count too — `dworkspace.example.com` is
 // exactly the invented example this rule wants people to use.
 const ALLOWED_HOSTS = /^(([a-z0-9-]+\.)*example\.(com|org|net)|localhost|github\.com|raw\.githubusercontent\.com|ghcr\.io|mermaid\.js\.org|your-instance)$/;
 // Reserved for documentation (RFC 5737) plus the loopback address.

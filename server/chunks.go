@@ -141,7 +141,7 @@ func blockPlainText(blk mdBlock) string {
 			b.WriteString(i.Text)
 			b.WriteString(" ")
 		}
-		if i.Type == "pageLink" {
+		if i.Type == "pageLink" || i.Type == "mention" {
 			if label, ok := i.Props["label"].(string); ok {
 				b.WriteString(label)
 				b.WriteString(" ")

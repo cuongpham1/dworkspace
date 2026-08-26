@@ -3919,6 +3919,52 @@ body.is-col-resizing {
   opacity: 0.7;
 }
 
+/* Opening a mention jumps to the block it sits in. The flash is what tells the
+   reader WHICH line the notification meant — on a long page the scroll alone
+   leaves them looking at a screenful of text with no marker.
+
+   Ends by itself after one pass (no `infinite`): a permanent pulse would still
+   be blinking minutes later while somebody is trying to read. Animated on a
+   box-shadow inset rather than `background`, so it cannot fight a block that
+   already has a background colour of its own (callouts, coloured blocks). */
+@keyframes block-flash {
+  0% {
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--accent) 26%, transparent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 9999px transparent;
+  }
+}
+
+.block-flash {
+  border-radius: 4px;
+  animation: block-flash 1s ease-out 1;
+}
+
+/* Somebody who asked not to see motion still needs to know which line it is,
+   so the marker stays — it just does not animate. */
+@media (prefers-reduced-motion: reduce) {
+  .block-flash {
+    animation: none;
+    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+}
+
+/* ---------- Inline user mentions (@name) ---------- */
+
+.user-mention {
+  --mention-color: var(--accent);
+  display: inline;
+  color: var(--mention-color);
+  font-weight: 500;
+  border-radius: 4px;
+  padding: 0 3px;
+  background: color-mix(in srgb, var(--mention-color) 16%, transparent);
+  white-space: normal;
+  line-height: inherit;
+  font-size: inherit;
+}
+
 /* ---------- Backlinks ---------- */
 
 .backlinks {
@@ -4663,6 +4709,76 @@ body.is-col-resizing {
 .share-hint {
   font-size: 12px;
   color: var(--muted);
+}
+
+/* The mentions dropdown. Same anchoring as .share-menu (both hang off a
+   .share-wrap in the header strip), narrower rows because each is one line. */
+.notif-menu {
+  right: 0;
+  top: 30px;
+  width: 300px;
+  padding: 6px;
+  gap: 2px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 6px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.notif-empty {
+  padding: 10px 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.notif-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--fg);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notif-item:hover {
+  background: var(--hover);
+}
+
+/* Unread is carried by weight and a dot, not by colour alone — the same reason
+   the comment button avoids a red badge. */
+.notif-item.unread {
+  font-weight: 600;
+}
+
+.notif-item.unread::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-left: auto;
+  flex: none;
+}
+
+.notif-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .share-input {

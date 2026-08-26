@@ -8,7 +8,7 @@ deeper: [Agent access](agent-access.md), [Sharing](sharing.md),
 [Trash and recovery](trash-and-recovery.md),
 [Self-hosting](self-hosting.md).
 
-## How salt.md tells you something failed
+## How dworkspace tells you something failed
 
 Three places, and it is worth knowing which one you are looking at.
 
@@ -236,7 +236,7 @@ records a second time. See [Import and export](import-export.md).
 ### The agent insists a tool does not exist
 
 Or calls one that was renamed and gets *unknown tool*. **A connected client keeps
-the catalogue it fetched when it connected.** salt.md does not announce
+the catalogue it fetched when it connected.** dworkspace does not announce
 catalogue changes, so a session that has been open across an update is working
 from the old list. Reconnect the client. Calling the old name again only proves
 the client is stale.
@@ -358,15 +358,15 @@ setting, or send a smaller file.
 
 ### "The file is too large for this instance."
 
-This one appears when the refusal did **not** come from salt.md: the browser
+This one appears when the refusal did **not** come from dworkspace: the browser
 falls back to this sentence when the 413 it received is not the server's JSON.
 In practice that means a reverse proxy in front, refusing with its own HTML
 error page.
 
-The usual cause is a stale body limit. The nginx configuration salt.md generates
+The usual cause is a stale body limit. The nginx configuration dworkspace generates
 writes `client_max_body_size` from the upload limit as it stood when you copied
-it. Raise the limit in salt.md later and the proxy still refuses at the old
-size — and salt.md never sees the request at all.
+it. Raise the limit in dworkspace later and the proxy still refuses at the old
+size — and dworkspace never sees the request at all.
 
 ### "Upload failed" or "…" was not uploaded
 
@@ -514,8 +514,8 @@ server decided about its memory, whether it rebuilt the search index, whether it
 rebuilt the file index, and what address it is listening on. Most answers are
 there.
 
-**A restore refuses to run.** `salt restore` will not overwrite an existing
-database. Empty the data directory, or set `SALT_RESTORE_FORCE=1`. The guard is
+**A restore refuses to run.** `dworkspace restore` will not overwrite an existing
+database. Empty the data directory, or set `DWORKSPACE_RESTORE_FORCE=1`. The guard is
 deliberate — restoring over a live instance is the mistake it exists to prevent.
 
 **A backup restored, but did the schema survive?** The proof is the *absence* of
@@ -525,7 +525,7 @@ an upgrade and suspicious after a plain restore.
 
 **You copied the database out and the schema looks old.** SQLite runs in WAL
 mode. The `.db` file alone is stale; recent changes are in the `-wal` file next
-to it. Copy all three, or stop the server first. `salt backup` does this
+to it. Copy all three, or stop the server first. `dworkspace backup` does this
 properly — it takes a transactionally consistent snapshot, so it is safe against
 a running instance.
 
@@ -533,19 +533,19 @@ a running instance.
 treated as a small machine on purpose, because the host's figure is not a
 promise about what the container will be given. That reading does two things: it
 sizes what gets indexed, and it tells the garbage collector where the ceiling
-is. Set `--memory=` on the container or `SALT_MEMORY_MB` to tell it the truth,
+is. Set `--memory=` on the container or `DWORKSPACE_MEMORY_MB` to tell it the truth,
 and note which direction is dangerous — reading **too high** is, because the
 collector then aims at memory the container will never get and the kernel
 arrives first. Reading too low costs indexing and nothing else: the file is
 still stored, listed and downloadable.
 
 **Pages imported from Notion carry a repeated preamble.** With the server
-stopped, `salt fix-notion-rows` strips the "# title + Property: value" block
+stopped, `dworkspace fix-notion-rows` strips the "# title + Property: value" block
 that Notion writes into every database row and reports how many bodies it
 cleaned. It takes the sole database connection, so it will not run alongside a
 live instance.
 
-**Do not ask the binary for its version with a flag.** `salt version` prints it.
+**Do not ask the binary for its version with a flag.** `dworkspace version` prints it.
 An unrecognised flag is not a subcommand, so the binary starts a second server
 instead — beside the one already running.
 

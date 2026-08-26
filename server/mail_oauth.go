@@ -18,7 +18,7 @@ import (
 // secret; sendMail prefers the connected provider and falls back to SMTP.
 // No more fiddling with SMTP.
 
-const mailOauthCookie = "salt_mail_oauth"
+const mailOauthCookie = "dworkspace_mail_oauth"
 
 func mailScopes(provider string) string {
 	if provider == "google" {
@@ -211,7 +211,7 @@ func (s *Server) handleMailTest(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 403, "admin only")
 		return
 	}
-	if err := s.sendMail(u.Email, "salt.md test message", "Sending mail works! 🧂"); err != nil {
+	if err := s.sendMail(u.Email, "dworkspace test message", "Sending mail works! 🧂"); err != nil {
 		httpErrorFrom(w, 400, err)
 		return
 	}

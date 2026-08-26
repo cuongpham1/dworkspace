@@ -1,5 +1,26 @@
+> ### This is a fork
+>
+> **Upstream: [saltmd/salt.md](https://github.com/saltmd/salt.md)** — all of the original
+> work is theirs, and it is excellent. This fork exists because a team needed the
+> product under their own name on their own hardware; it is published because
+> AGPL-3.0 requires it once you serve a modified version over a network, and
+> because two of the fixes below belong back upstream.
+>
+> **What is different from upstream:**
+>
+> | Change | Why |
+> | --- | --- |
+> | Renamed `salt` → `dworkspace` throughout (module path, env vars `SALT_*` → `DWORKSPACE_*`, session cookie, API-token prefix, DB filename, webhook header, desktop URL scheme, docs) | The deployment carries the team's own name |
+> | **Fix: FTS5 query built without an explicit `AND`** | Any multi-word search where one word grew a stem/variant produced a *silent* empty result — the pattern failed to parse and the error was swallowed |
+> | **Fix: FTS5 punctuation-only tokens** | `OMS - Trade` returned nothing while `OMS Trade` returned five pages. A lone `-` became a legal but empty phrase and `AND`-ed the whole query to zero. Pasting a document title was enough to trigger it |
+> | **Fix: `POST /oauth/register` replied `text/plain`** | `WriteHeader` was called before the Content-Type was set, so Go sniffed the body. RFC 7591 requires `application/json`; ChatGPT rejected the registration and retried forever, never reaching the consent step |
+> | Feature: `@`-mentions of people, with an inbox and a notification that scrolls to the exact block | Upstream's `@` only linked pages |
+> | Both search paths now log their errors | All three bugs above shipped precisely because a malformed query is indistinguishable from "nothing found" |
+>
+> The three fixes are not team-specific and are offered upstream.
+
 <p align="center">
-  <img src=".github/banner.png" alt="salt.md" width="100%">
+  <img src=".github/banner.png" alt="dworkspace" width="100%">
 </p>
 
 <p align="center">
@@ -60,7 +81,7 @@ Docker, if you prefer:
 docker run -d -p 8420:8420 -v salt-data:/data ghcr.io/saltmd/salt.md:latest
 ```
 
-## Why salt.md exists
+## Why dworkspace exists
 
 Agents increasingly need somewhere to put durable, structured work. Not a chat
 log, not a vector store, but pages and tables a person will read tomorrow.
@@ -70,7 +91,7 @@ feature bolted to the side, which means the agent talks *about* the content
 through a chat window. Or agent infrastructure with a decent API and no
 interface a human being would willingly use.
 
-salt.md is one workspace with two front doors. A block editor, databases and
+dworkspace is one workspace with two front doors. A block editor, databases and
 realtime editing for people. An MCP endpoint for agents, on the same objects
 and the same permission model. And you run the whole thing yourself.
 
@@ -137,7 +158,7 @@ German stemming so *Verträge* finds *Vertrag*.
                     MCP
                      │
               ┌─────────────┐
-   people ──▶ │   salt.md   │ ◀── REST API
+   people ──▶ │   dworkspace   │ ◀── REST API
     (browser) └─────────────┘     webhooks · ICS
                      │
             SQLite file + uploads
@@ -165,7 +186,7 @@ you run, not a second copy of the product. See
 
 ## Documentation
 
-[salt.md/wiki](https://salt.md/wiki/) has 40 pages covering every screen, every
+[dworkspace/wiki](https://salt.md/wiki/) has 40 pages covering every screen, every
 property type, every tool an agent can call and every setting on the server.
 
 It is derived from this source and checked against it on every build. A tool
@@ -180,12 +201,12 @@ Issues and pull requests are welcome. Pull requests need a signed
 [CLA](CLA.md). [CONTRIBUTING.md](CONTRIBUTING.md) says what that means and why
 it exists.
 
-Security reports: **dev@salt.md**, not a public issue. See
+Security reports: **dev@dworkspace**, not a public issue. See
 [SECURITY.md](SECURITY.md).
 
 ## License
 
-The components salt.md is built on, and their licences in full:
+The components dworkspace is built on, and their licences in full:
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). A running instance serves
 the same list at `/licenses`.
 

@@ -1,12 +1,12 @@
 #!/bin/sh
-# salt.md installer: downloads the right prebuilt binary, installs it, and
-# starts it. Set SALT_NO_START=1 to install without starting.
+# dworkspace installer: downloads the right prebuilt binary, installs it, and
+# starts it. Set DWORKSPACE_NO_START=1 to install without starting.
 #
 #   curl -fsSL https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
 #
 # The binary is fully self-contained (frontend embedded, no CGO, no runtime
 # deps). Override the target dir with BIN_DIR=/path, or pin a version with
-# SALT_VERSION=v1.0.0.
+# DWORKSPACE_VERSION=v1.0.0.
 set -eu
 
 REPO="saltmd/salt.md"
@@ -19,17 +19,17 @@ os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m)
 case "$os" in
   linux|darwin) ;;
-  *) err "Unsupported OS: $os (salt.md ships prebuilt binaries for linux and macOS; build from source for others)";;
+  *) err "Unsupported OS: $os (dworkspace ships prebuilt binaries for linux and macOS; build from source for others)";;
 esac
 case "$arch" in
   x86_64|amd64) arch=amd64 ;;
   aarch64|arm64) arch=arm64 ;;
   *) err "Unsupported architecture: $arch" ;;
 esac
-asset="salt-${os}-${arch}"
+asset="dworkspace-${os}-${arch}"
 
 # --- resolve download URL ---------------------------------------------------
-ver="${SALT_VERSION:-latest}"
+ver="${DWORKSPACE_VERSION:-latest}"
 if [ "$ver" = "latest" ]; then
   url="https://github.com/$REPO/releases/latest/download/$asset"
 else
@@ -58,7 +58,7 @@ else
   bindir="$HOME/.local/bin"
 fi
 
-say "Downloading salt.md ($asset, $ver)…"
+say "Downloading dworkspace ($asset, $ver)…"
 tmp=$(mktemp)
 trap 'rm -f "$tmp"' EXIT
 fetch "$url" "$tmp" || err "Download failed. Is there a release yet? $url"
@@ -68,18 +68,18 @@ if head -c 4 "$tmp" | grep -q '<!DO\|<htm\|<HTM' 2>/dev/null || [ ! -s "$tmp" ];
 fi
 chmod +x "$tmp"
 
-say "Installing to $bindir/salt"
+say "Installing to $bindir/dworkspace"
 if [ -n "$use_sudo" ]; then
-  sudo mkdir -p "$bindir" && sudo mv "$tmp" "$bindir/salt"
+  sudo mkdir -p "$bindir" && sudo mv "$tmp" "$bindir/dworkspace"
 else
-  mkdir -p "$bindir" && mv "$tmp" "$bindir/salt"
+  mkdir -p "$bindir" && mv "$tmp" "$bindir/dworkspace"
 fi
 trap - EXIT
 
-# `salt version` already prints a leading v, and $ver is "latest" when nobody
+# `dworkspace version` already prints a leading v, and $ver is "latest" when nobody
 # pinned one — so normalise instead of gluing a v in front of whatever comes
 # back, which produced "vv1.0.0" and could have produced "vlatest".
-installed=$("$bindir/salt" version 2>/dev/null || echo "$ver")
+installed=$("$bindir/dworkspace" version 2>/dev/null || echo "$ver")
 installed=${installed#v}
 case "$installed" in latest|'') installed='' ;; *) installed="v$installed   " ;; esac
 
@@ -95,14 +95,14 @@ lan=$(hostname -I 2>/dev/null | awk '{ print $1 }' || true)
 [ -n "$lan" ] || lan=$(ip route get 1.1.1.1 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "src") { print $(i + 1); exit } }' || true)
 [ -n "$lan" ] || lan=$(ipconfig getifaddr en0 2>/dev/null || true)
 
-# The port is not always 8420: SALT_ADDR moves it, and printing the default
+# The port is not always 8420: DWORKSPACE_ADDR moves it, and printing the default
 # regardless sends people to a port nothing is listening on. Take whatever
-# follows the last colon, fall back to the default when SALT_ADDR is unset or
+# follows the last colon, fall back to the default when DWORKSPACE_ADDR is unset or
 # is a bare address.
-# `set -u` is on, so SALT_ADDR has to be defaulted before it is expanded —
-# ${SALT_ADDR##*:} on its own aborts the whole install when nobody set it,
+# `set -u` is on, so DWORKSPACE_ADDR has to be defaulted before it is expanded —
+# ${DWORKSPACE_ADDR##*:} on its own aborts the whole install when nobody set it,
 # which is every ordinary run.
-addr=${SALT_ADDR:-}
+addr=${DWORKSPACE_ADDR:-}
 port=${addr##*:}
 case "$port" in ''|*[!0-9]*) port=8420 ;; esac
 
@@ -132,22 +132,22 @@ service_possible() {
 }
 
 install_service() {
-  id salt >/dev/null 2>&1 || useradd --system --home-dir "$svcdata" --shell /usr/sbin/nologin salt 2>/dev/null || true
-  install -d -o salt -g salt "$svcdata"
+  id dworkspace >/dev/null 2>&1 || useradd --system --home-dir "$svcdata" --shell /usr/sbin/nologin dworkspace 2>/dev/null || true
+  install -d -o dworkspace -g dworkspace "$svcdata"
 
-  cat > /etc/systemd/system/salt.service <<UNIT
+  cat > /etc/systemd/system/dworkspace.service <<UNIT
 [Unit]
-Description=salt.md
-Documentation=https://salt.md/wiki/
+Description=dworkspace
+Documentation=https://dworkspace.example.com/wiki/
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-User=salt
-Group=salt
-ExecStart=$bindir/salt
-Environment=SALT_ADDR=:$port
-Environment=SALT_DATA=$svcdata
+User=dworkspace
+Group=dworkspace
+ExecStart=$bindir/dworkspace
+Environment=DWORKSPACE_ADDR=:$port
+Environment=DWORKSPACE_DATA=$svcdata
 WorkingDirectory=$svcdata
 Restart=on-failure
 RestartSec=2
@@ -163,17 +163,17 @@ WantedBy=multi-user.target
 UNIT
 
   systemctl daemon-reload
-  systemctl enable salt >/dev/null 2>&1 || true
-  systemctl restart salt
+  systemctl enable dworkspace >/dev/null 2>&1 || true
+  systemctl restart dworkspace
 }
 
-svcdata=/var/lib/salt
+svcdata=/var/lib/dworkspace
 
 # Decide BEFORE anything is printed, so the summary can name the directory that
 # will actually be used. Printing $PWD/data and then installing a service that
-# reads /var/lib/salt is how somebody goes looking for a database that was never
+# reads /var/lib/dworkspace is how somebody goes looking for a database that was never
 # there.
-if [ -z "${SALT_NO_SERVICE:-}" ] && service_possible; then
+if [ -z "${DWORKSPACE_NO_SERVICE:-}" ] && service_possible; then
   as_service=yes
   datadir=$svcdata
 else
@@ -205,33 +205,33 @@ printf '\n'
 
 if [ "$as_service" = yes ]; then
   had_unit=no
-  [ -f /etc/systemd/system/salt.service ] && had_unit=yes
+  [ -f /etc/systemd/system/dworkspace.service ] && had_unit=yes
   install_service
 
   # Report it running because it IS, not because systemctl exited 0.
   i=0
-  while [ "$i" -lt 30 ] && ! systemctl is-active --quiet salt; do
+  while [ "$i" -lt 30 ] && ! systemctl is-active --quiet dworkspace; do
     i=$((i + 1))
     sleep 1
   done
 
-  if systemctl is-active --quiet salt; then
+  if systemctl is-active --quiet dworkspace; then
     if [ "$had_unit" = yes ]; then
       printf '  %sUpdated. It was already running as a service, and was restarted.%s\n' "$d" "$r"
     else
       printf '  %sInstalled as a service: it starts on boot and restarts after a crash.%s\n' "$d" "$r"
     fi
-    printf '  %ssystemctl status salt   ·   journalctl -u salt -f%s\n' "$d" "$r"
+    printf '  %ssystemctl status dworkspace   ·   journalctl -u dworkspace -f%s\n' "$d" "$r"
     # A foreground run earlier wrote its database into whatever directory it was
     # started from. The service reads a different one, so an empty workspace here
     # is a file in the other place and not a lost one.
-    if [ -f ./data/salt.db ] && [ ! -f "$svcdata/salt.db" ]; then
-      printf '\n  %sNote: ./data/salt.db is from an earlier foreground run. The service uses%s\n' "$d" "$r"
+    if [ -f ./data/dworkspace.db ] && [ ! -f "$svcdata/dworkspace.db" ]; then
+      printf '\n  %sNote: ./data/dworkspace.db is from an earlier foreground run. The service uses%s\n' "$d" "$r"
       printf '  %s%s, so it starts empty. Nothing was deleted.%s\n' "$d" "$svcdata" "$r"
     fi
     printf '\n'
   else
-    printf '  %sThe service did not come up. journalctl -u salt says why.%s\n\n' "$d" "$r"
+    printf '  %sThe service did not come up. journalctl -u dworkspace says why.%s\n\n' "$d" "$r"
   fi
   exit 0
 fi
@@ -239,15 +239,15 @@ fi
 # Not a systemd server. Piped into a Dockerfile or a provisioning script a
 # foreground process would block forever, so a non-tty install prints the
 # command and gets out of the way.
-if [ -n "${SALT_NO_START:-}" ] || [ ! -t 1 ]; then
+if [ -n "${DWORKSPACE_NO_START:-}" ] || [ ! -t 1 ]; then
   case ":$PATH:" in
-    *":$bindir:"*) printf '  Run it:   salt\n' ;;
-    *)             printf '  %s is not on your PATH. Run it with:\n            %s/salt\n' "$bindir" "$bindir" ;;
+    *":$bindir:"*) printf '  Run it:   dworkspace\n' ;;
+    *)             printf '  %s is not on your PATH. Run it with:\n            %s/dworkspace\n' "$bindir" "$bindir" ;;
   esac
   exit 0
 fi
 
 # No "starting it now" line: the server's own "listening on" line arrives a
 # breath later and says it better. What a person needs here is the way back out.
-printf '  %sCtrl-C stops it. Run%s salt %sto start it again.%s\n\n' "$d" "$r" "$d" "$r"
-exec "$bindir/salt"
+printf '  %sCtrl-C stops it. Run%s dworkspace %sto start it again.%s\n\n' "$d" "$r" "$d" "$r"
+exec "$bindir/dworkspace"

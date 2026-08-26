@@ -4,9 +4,9 @@ const fs = require('node:fs');
 const { normalizeURL } = require('./serverURL');
 const crypto = require('node:crypto');
 
-// salt.md in its own window.
+// dworkspace in its own window.
 //
-// This is a SHELL around a server you run — not a copy of salt.md and not a
+// This is a SHELL around a server you run — not a copy of dworkspace and not a
 // local instance. You give it an address once and it opens straight into your
 // workspace, in a window with no address bar and a native menu.
 //
@@ -29,17 +29,17 @@ const crypto = require('node:crypto');
 
 // The scheme the browser uses to hand control back. Registered at startup; if
 // the system refuses, the app falls back to signing in inside its own window.
-const desktopScheme = 'salt';
+const desktopScheme = 'dworkspace';
 
 const store = path.join(app.getPath('userData'), 'settings.json');
 
-// The app was called "salt.md" before it was called "salt.md", and Electron
+// The app was called "dworkspace" before it was called "dworkspace", and Electron
 // derives the settings directory from that name. Renaming it would therefore
 // have silently forgotten which server somebody had configured — the one thing
 // this app stores. Moved once, quietly, and only when there is nothing here yet.
 (function carryOverOldSettings() {
   if (fs.existsSync(store)) return;
-  const old = path.join(path.dirname(app.getPath('userData')), 'salt.md', 'settings.json');
+  const old = path.join(path.dirname(app.getPath('userData')), 'dworkspace', 'settings.json');
   try {
     if (fs.existsSync(old)) {
       fs.mkdirSync(path.dirname(store), { recursive: true });
@@ -114,7 +114,7 @@ function closeAuthWindow() {
 // a window an application drew. It also reuses the browser session you already
 // have, and passkeys work there.
 //
-// The hand-back is the hard part. salt:// is not a private channel — any
+// The hand-back is the hard part. dworkspace:// is not a private channel — any
 // program may register for it. So the code that comes back is useless alone:
 // the app keeps a secret (the verifier), sends only its digest to the server at
 // the start, and must present the secret to redeem the code. Whoever intercepts
@@ -151,7 +151,7 @@ function startBrowserSignIn() {
   shell.openExternal(server + '/desktop/login?challenge=' + encodeURIComponent(challenge));
 }
 
-/** Handles salt://auth?code=… — the browser handing control back. */
+/** Handles dworkspace://auth?code=… — the browser handing control back. */
 async function finishBrowserSignIn(rawURL) {
   let code = '';
   try {
@@ -198,7 +198,7 @@ function createWindow() {
     height: saved.height ?? 860,
     minWidth: 700,
     minHeight: 500,
-    // The traffic lights sit inside the window on macOS: salt.md's own topbar
+    // The traffic lights sit inside the window on macOS: dworkspace's own topbar
     // is the chrome, and a second title bar above it is a wasted stripe.
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#191919',
@@ -261,7 +261,7 @@ function createWindow() {
     // A sign-in starting: OUT to the real browser rather than in this window.
     // The embedded flow is kept as a fallback only for the case where the
     // protocol could not be registered — otherwise somebody whose machine
-    // refuses salt:// would have no way in at all.
+    // refuses dworkspace:// would have no way in at all.
     if (isAuthStart(server, url)) {
       if (!protocolRegistered) {
         openAuthWindow();
@@ -293,7 +293,7 @@ function createWindow() {
     if (/^https?:/i.test(url)) shell.openExternal(url);
   });
 
-  // salt.md draws its own context menus now (right-click a page, a row, a
+  // dworkspace draws its own context menus now (right-click a page, a row, a
   // card). Chromium's default menu would open on top of them — "Back",
   // "Reload", "Inspect" over the menu somebody actually wanted. Suppressed
   // except where there is text to act on, because "Copy" and the spelling
@@ -334,9 +334,9 @@ function showUnreachable(url, description) {
 
 // ---- what the connect page may ask for -------------------------------------
 
-ipcMain.handle('salt:getServer', () => readSettings().server ?? '');
+ipcMain.handle('dworkspace:getServer', () => readSettings().server ?? '');
 
-ipcMain.handle('salt:setServer', async (_e, input) => {
+ipcMain.handle('dworkspace:setServer', async (_e, input) => {
   const origin = normalizeURL(input);
   if (!origin) return { ok: false, error: 'not-a-url' };
   // Ask the instance whether it is one before saving. Typing an address that
@@ -345,7 +345,7 @@ ipcMain.handle('salt:setServer', async (_e, input) => {
   try {
     const res = await fetch(origin + '/api/health', { redirect: 'follow' });
     const body = await res.json();
-    if (!body || body.status !== 'ok') return { ok: false, error: 'not-salt' };
+    if (!body || body.status !== 'ok') return { ok: false, error: 'not-dworkspace' };
     writeSettings({ ...readSettings(), server: origin });
     route();
     return { ok: true, version: body.version ?? '' };
@@ -356,18 +356,18 @@ ipcMain.handle('salt:setServer', async (_e, input) => {
 
 // Back to the workspace without changing anything. Only reachable when a
 // server is already configured — otherwise there is nothing to go back to.
-ipcMain.handle('salt:openConnect', () => {
+ipcMain.handle('dworkspace:openConnect', () => {
   openConnect();
   return true;
 });
 
-ipcMain.handle('salt:cancel', () => {
+ipcMain.handle('dworkspace:cancel', () => {
   const server = readSettings().server;
   if (server && win && !win.isDestroyed()) win.loadURL(server);
   return !!server;
 });
 
-ipcMain.handle('salt:forget', () => {
+ipcMain.handle('dworkspace:forget', () => {
   const { server, ...rest } = readSettings();
   writeSettings(rest);
   route();
@@ -434,7 +434,7 @@ function buildMenu() {
       role: 'help',
       submenu: [
         {
-          label: 'salt.md documentation',
+          label: 'dworkspace documentation',
           click: () => shell.openExternal('https://salt.md/wiki'),
         },
         {
@@ -442,10 +442,10 @@ function buildMenu() {
           click: () =>
             dialog.showMessageBox(win, {
               type: 'info',
-              message: 'salt.md',
+              message: 'dworkspace',
               detail:
                 `Version ${app.getVersion()}\n\n` +
-                'This app is a window onto a salt.md server you run. ' +
+                'This app is a window onto a dworkspace server you run. ' +
                 'Your data lives on that server, not here.\n\n' +
                 `Connected to: ${readSettings().server || 'nothing yet'}`,
             }),
@@ -485,7 +485,7 @@ app.whenReady().then(() => {
   // knows about it from the moment it is installed — no run required.
   //
   // A DEVELOPMENT run must never claim it. `npx electron .` would register the
-  // Electron binary in node_modules as the handler, which then answers salt://
+  // Electron binary in node_modules as the handler, which then answers dworkspace://
   // with its own welcome screen and leaves the installed app unreachable. That
   // is not hypothetical: it happened, and it looked exactly like the rename had
   // broken the sign-in.
@@ -501,8 +501,8 @@ app.whenReady().then(() => {
   const ua = session.defaultSession
     .getUserAgent()
     .replace(/ Electron\/[\d.]+/, '')
-    .replace(/ salt-desktop\/[\d.]+/i, '')
-    .replace(/ Salt\.md\/[\d.]+/i, '');
+    .replace(/ dworkspace-desktop\/[\d.]+/i, '')
+    .replace(/ Dworkspace\.md\/[\d.]+/i, '');
   session.defaultSession.setUserAgent(ua);
 
   // The renderer loads a REMOTE page, so it is treated as one: no permission is

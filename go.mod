@@ -1,4 +1,4 @@
-module salt
+module dworkspace
 
 go 1.25.0
 

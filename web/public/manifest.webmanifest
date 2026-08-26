@@ -1,6 +1,6 @@
 {
-  "name": "salt.md",
-  "short_name": "salt.md",
+  "name": "dworkspace",
+  "short_name": "dworkspace",
   "description": "Fast, lightweight, self-hosted workspace for notes, docs and databases.",
   "start_url": "/",
   "scope": "/",

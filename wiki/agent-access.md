@@ -1,6 +1,6 @@
 # Agent access
 
-An agent reaches salt.md with a credential that belongs to a person. This page
+An agent reaches dworkspace with a credential that belongs to a person. This page
 covers the two kinds of credential — a permanent API token and a connection
 somebody signed in for — what each can be narrowed to, what a workspace may say
 about agents regardless of who issued the credential, what an agent inherits
@@ -17,7 +17,7 @@ what the credential is and how long it lives.
 
 | | API token | Signing in |
 | --- | --- | --- |
-| What it is | A secret string starting `salt_`, created once and valid until revoked | A short-lived access token the client renews by itself |
+| What it is | A secret string starting `dworkspace_`, created once and valid until revoked | A short-lived access token the client renews by itself |
 | Where it travels | An `Authorization: Bearer` header, or inside the address as `/mcp/<token>` | A header only — nothing secret is ever in the address |
 | Lifetime | Until somebody revokes it | The access token lasts one hour; the connection behind it stays until it is ended |
 | Who chooses the reach | Whoever creates the token, in a settings dialog | The person, on a consent screen, while looking at what they are granting |
@@ -384,7 +384,7 @@ current access token. It always answers success, whether or not the token
 existed: telling a caller which is which would turn it into a way of testing
 guesses.
 
-On the salt.md side the connections on your account are readable at
+On the dworkspace side the connections on your account are readable at
 `/api/oauth/grants` and can be ended with a DELETE on
 `/api/oauth/grants/{id}` — both from a signed-in browser session only. **The
 consent screen promises this lives in your account settings; today it is the

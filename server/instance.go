@@ -58,7 +58,7 @@ func (s *Server) handleAdminInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAdminBackup streams a consistent .tar.gz backup (VACUUM'd SQLite
-// snapshot + all uploads) — the same archive `salt backup` produces on the
+// snapshot + all uploads) — the same archive `dworkspace backup` produces on the
 // CLI, but downloadable from the browser.
 func (s *Server) handleAdminBackup(w http.ResponseWriter, r *http.Request) {
 	// Owner, not admin: this archive holds EVERY workspace, all uploads,
@@ -70,7 +70,7 @@ func (s *Server) handleAdminBackup(w http.ResponseWriter, r *http.Request) {
 		httpErrorCode(w, 403, "owner_only_backup", "Only the owner can download an instance backup — it contains every workspace.")
 		return
 	}
-	tmp, err := os.CreateTemp("", "salt-backup-*.tar.gz")
+	tmp, err := os.CreateTemp("", "dworkspace-backup-*.tar.gz")
 	if err != nil {
 		httpError(w, 500, "backup failed")
 		return
@@ -90,7 +90,7 @@ func (s *Server) handleAdminBackup(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	st, _ := f.Stat()
-	name := "salt-backup-" + time.Now().Format("20060102-150405") + ".tar.gz"
+	name := "dworkspace-backup-" + time.Now().Format("20060102-150405") + ".tar.gz"
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	if st != nil {

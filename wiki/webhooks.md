@@ -1,8 +1,8 @@
 # Webhooks
 
 A webhook is a standing instruction to call an address of your choosing when a
-page is created, changed or thrown away. Instead of another program asking Salt
-over and over whether anything is new, Salt calls it. That is what Zapier, Make
+page is created, changed or thrown away. Instead of another program asking Dworkspace
+over and over whether anything is new, Dworkspace calls it. That is what Zapier, Make
 and n8n need to start a scenario, and it is what a script on your own server
 needs to react to a page without polling.
 
@@ -51,7 +51,7 @@ As soon as the hook is created, a box appears:
 > **Copy this secret now — it is shown only once.**
 >
 > Your receiver uses it to check that a message really came from us. We send it
-> as a signature in the X-Salt-Signature header.
+> as a signature in the X-Dworkspace-Signature header.
 
 Below it sits the secret — 64 hexadecimal characters — and a button labelled
 **I have it**, which dismisses the box.
@@ -65,7 +65,7 @@ It is **not** hashed the way an [API token](api.md) is. A token is stored as a
 hash and cannot be recovered by anybody, but a webhook secret has to stay usable
 — the server computes the signature with it on every delivery — so it sits in
 the database as it is. An instance backup (the owner's **Download backup
-(.tar.gz)** in Instance settings → Maintenance, or `./salt backup` from cron)
+(.tar.gz)** in Instance settings → Maintenance, or `./dworkspace backup` from cron)
 therefore contains every webhook secret on the instance. Keep the archive as
 carefully as you would keep the secret.
 
@@ -170,7 +170,7 @@ A `POST` with a JSON body. The body names the page and does not carry it:
 - `path` is relative. Put your instance's own address in front of it to build a
   link a person can click.
 - The headers are `Content-Type: application/json`, a `User-Agent` of
-  `salt.md/` plus the running version, and `X-Salt-Signature`.
+  `dworkspace/` plus the running version, and `X-Dworkspace-Signature`.
 
 Two things about the body are deliberate, and worth knowing before you build on
 it.
@@ -199,7 +199,7 @@ trash normally still has both.
 Every delivery carries a header:
 
 ```
-X-Salt-Signature: sha256=<64 hex characters>
+X-Dworkspace-Signature: sha256=<64 hex characters>
 ```
 
 That is an HMAC-SHA256 of the **exact raw request body**, keyed with the secret
@@ -254,7 +254,7 @@ range some providers put between a customer network and the internet (100.64.x)
 is the common example. So the rule is "these are refused", not "only the public
 internet is allowed".
 
-The reason for it is not caution for its own sake. Salt sits inside a network
+The reason for it is not caution for its own sake. Dworkspace sits inside a network
 and can reach neighbours that the internet cannot: routers, hypervisors, the
 metadata service that hands out cloud credentials. A field that makes the server
 call any address an admin can type is the classic way a harmless feature becomes
@@ -267,7 +267,7 @@ following a redirect is how a checked address turns into an unchecked one. A
 `301` or `302` from your receiver is recorded as a failure.
 
 There is one override, and it belongs to whoever runs the server, not to an
-admin in the interface: starting Salt with `SALT_IMPORT_ALLOW_PRIVATE=1` lifts
+admin in the interface: starting Dworkspace with `DWORKSPACE_IMPORT_ALLOW_PRIVATE=1` lifts
 the restriction for the whole process. Its name says import, but it opens
 webhooks as well. Set it only on an instance where every URL in the settings
 dialog is one you put there — see [Self-hosting](self-hosting.md).
@@ -347,8 +347,8 @@ consults before delivering, not as a setting you can use.
 
 ## When a webhook is the wrong tool
 
-- **Something inside Salt should react to a change** — there is nothing for
-  that. salt.md has no rule engine and no scheduler; nothing in it says "when
+- **Something inside Dworkspace should react to a change** — there is nothing for
+  that. dworkspace has no rule engine and no scheduler; nothing in it says "when
   Status becomes Done, send an email". The logic lives at the other end of the
   webhook. See [Automation](automation.md) for the whole map of what reaches in
   and out.

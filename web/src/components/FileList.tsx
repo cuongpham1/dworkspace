@@ -4,7 +4,7 @@ import Portal from './Portal';
 import { useExclusiveModal } from '../modal';
 import { t, plural } from '../i18n';
 import { formatBytes, formatMoment } from '../format';
-import type { SaltFile } from '../types';
+import type { DworkspaceFile } from '../types';
 import { FileText } from 'lucide-react';
 
 // "Show me every document for this customer." Until now a file existed only as
@@ -24,7 +24,7 @@ export default function FileList({
   onOpenPage: (id: string) => void;
   onClose: () => void;
 }) {
-  const [files, setFiles] = useState<SaltFile[] | null>(null);
+  const [files, setFiles] = useState<DworkspaceFile[] | null>(null);
   const [filter, setFilter] = useState('');
   const [kind, setKind] = useState('');
   useExclusiveModal(onClose);

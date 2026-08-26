@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
-const tmp = mkdtempSync(join(tmpdir(), 'salt-tree-'));
+const tmp = mkdtempSync(join(tmpdir(), 'dworkspace-tree-'));
 const bundle = join(tmp, 'treeMode.mjs');
 
 try {

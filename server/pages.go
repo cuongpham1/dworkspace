@@ -764,6 +764,9 @@ func (s *Server) reindexPage(id string) error {
 	}
 	// Keep the outgoing-links index in sync with the current content.
 	s.updateLinks(id, content, trashedAt.Valid)
+	// Same for user mentions — who was named on this page, and does their
+	// notification still stand (see mentions.go).
+	s.updateMentions(id, content, trashedAt.Valid)
 	if trashedAt.Valid {
 		// In the trash: clear the passages, or the page keeps turning up in
 		// the passage-based search.
@@ -1034,6 +1037,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 // best one.
 func (s *Server) searchChunks(userID, match string, ws []string, want int) []searchResult {
 	out := []searchResult{}
+	// A query of nothing but separators ("-", "/") leaves ftsMatch with no terms
+	// at all. Answering "no results" here is both correct and safer than handing
+	// FTS5 an empty MATCH, which is a syntax error.
+	if match == "" {
+		return out
+	}
 	seen := map[string]bool{}
 	args := make([]any, 0, len(ws)+1)
 	args = append(args, match)
@@ -1053,6 +1062,10 @@ func (s *Server) searchChunks(userID, match string, ws []string, want int) []sea
 			ORDER BY bm25(chunks_fts, 0.0, 5.0, 3.0, 1.0)
 			LIMIT 60 OFFSET `+strconv.Itoa(offset), qArgs...)
 		if err != nil {
+			// Swallowing this is how a malformed MATCH pattern shipped twice:
+			// a syntax error looks exactly like "nothing found". The query text
+			// itself is deliberately NOT logged — search terms are user content.
+			log.Printf("searchChunks: %v", err)
 			return out
 		}
 		// Drain the cursor BEFORE any canRead query — with a single DB connection, a
@@ -1088,6 +1101,9 @@ func (s *Server) searchChunks(userID, match string, ws []string, want int) []sea
 // searchPagesFallback is the old, page-by-page search.
 func (s *Server) searchPagesFallback(userID, match string, ws []string, want int) []searchResult {
 	out := []searchResult{}
+	if match == "" {
+		return out
+	}
 	args := make([]any, 0, len(ws)+1)
 	args = append(args, match)
 	for _, v := range ws {
@@ -1102,6 +1118,7 @@ func (s *Server) searchPagesFallback(userID, match string, ws []string, want int
 			ORDER BY bm25(pages_fts, 0.0, 5.0, 1.0)
 			LIMIT 60 OFFSET `+strconv.Itoa(offset), qArgs...)
 		if err != nil {
+			log.Printf("searchPagesFallback: %v", err)
 			return out
 		}
 		var cand []searchResult

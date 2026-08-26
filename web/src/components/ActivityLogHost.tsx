@@ -10,15 +10,15 @@ import { ActivityModal } from './UserMenu';
  *  event on the window, one host listening.
  */
 export function showActivityFor(pageId: string, pageTitle?: string) {
-  window.dispatchEvent(new CustomEvent('salt:activity', { detail: { pageId, pageTitle } }));
+  window.dispatchEvent(new CustomEvent('dworkspace:activity', { detail: { pageId, pageTitle } }));
 }
 
 export default function ActivityLogHost() {
   const [req, setReq] = useState<{ pageId: string; pageTitle?: string } | null>(null);
   useEffect(() => {
     const onShow = (e: Event) => setReq((e as CustomEvent).detail);
-    window.addEventListener('salt:activity', onShow);
-    return () => window.removeEventListener('salt:activity', onShow);
+    window.addEventListener('dworkspace:activity', onShow);
+    return () => window.removeEventListener('dworkspace:activity', onShow);
   }, []);
   if (!req) return null;
   return <ActivityModal pageId={req.pageId} pageTitle={req.pageTitle} onClose={() => setReq(null)} />;

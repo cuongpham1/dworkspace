@@ -412,7 +412,7 @@ func (s *Server) sendMail(to, subject, body string) error {
 	pass := s.setting("smtp_pass", "")
 	from := s.setting("smtp_from", user)
 	if from == "" {
-		from = "salt@" + host
+		from = "dworkspace@" + host
 	}
 	addr := host + ":" + port
 	// Headers may not contain line breaks: a subject holding "\r\nBcc: ..."
@@ -501,8 +501,8 @@ func (s *Server) handleCreateInvite(w http.ResponseWriter, r *http.Request) {
 		// English, like every other source string: an invitation goes to
 		// somebody who has no account yet, so the server has no way of knowing
 		// what language they read.
-		if err := s.sendMail(body.Email, "You have been invited to salt.md",
-			"You have been invited to a salt.md workspace.\n\nOpen this link to join:\n"+link+"\n\nThe link is valid for 14 days."); err == nil {
+		if err := s.sendMail(body.Email, "You have been invited to dworkspace",
+			"You have been invited to a dworkspace workspace.\n\nOpen this link to join:\n"+link+"\n\nThe link is valid for 14 days."); err == nil {
 			emailed = true
 		}
 	}
@@ -768,7 +768,7 @@ func (s *Server) handle2FASetup(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 500, err.Error())
 		return
 	}
-	otpauth := otpauthURL(secret, u.Email, "salt.md")
+	otpauth := otpauthURL(secret, u.Email, "dworkspace")
 	// Scannable QR as an inline data URI: authenticator apps expect to scan,
 	// and typing a 32-char secret by hand is the step people get wrong.
 	// Rendered locally — the secret never leaves the instance.

@@ -27,7 +27,7 @@ jobs:
       # Build the frontend once — it's the same embedded static bundle for
       # every OS/arch, so we reuse web/dist across all cross-compiles.
       #
-      # SALT_VERSION is not optional here. The frontend stamps it in and
+      # DWORKSPACE_VERSION is not optional here. The frontend stamps it in and
       # compares it against the version the server reports; built without it
       # the bundle says "dev", the binary says "v1.0.0", and every page load
       # raises "a new version is available" that reloading never clears. That
@@ -35,7 +35,7 @@ jobs:
       - name: Build frontend
         run: make frontend
         env:
-          SALT_VERSION: ${{ github.ref_name }}
+          DWORKSPACE_VERSION: ${{ github.ref_name }}
 
       - name: Cross-compile binaries
         run: |
@@ -44,11 +44,11 @@ jobs:
           mkdir -p dist
           build() {
             os="$1"; arch="$2"; ext="${3:-}"
-            out="dist/salt-${os}-${arch}${ext}"
+            out="dist/dworkspace-${os}-${arch}${ext}"
             echo "→ $out"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
               go build -trimpath \
-              -ldflags "-s -w -X salt/server.Version=${VERSION}" \
+              -ldflags "-s -w -X dworkspace/server.Version=${VERSION}" \
               -o "$out" .
           }
           build linux  amd64
@@ -56,7 +56,7 @@ jobs:
           build darwin amd64
           build darwin arm64
           build windows amd64 .exe
-          ( cd dist && sha256sum salt-* > SHA256SUMS.txt )
+          ( cd dist && sha256sum dworkspace-* > SHA256SUMS.txt )
           ls -lh dist
 
       - name: Publish release

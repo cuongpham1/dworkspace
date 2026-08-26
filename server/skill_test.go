@@ -55,8 +55,8 @@ func TestTheSkillCarriesThisInstanceAndThisWorkspace(t *testing.T) {
 	}
 
 	files := downloadSkill(t, s, cookie, "?workspace="+ws)
-	skill := files["saltmd/SKILL.md"]
-	block := files["saltmd/reference/block.md"]
+	skill := files["dworkspace/SKILL.md"]
+	block := files["dworkspace/reference/block.md"]
 	if skill == "" || block == "" {
 		t.Fatalf("bundle is missing its parts: %v", keysOf(files))
 	}
@@ -145,7 +145,7 @@ func TestTheSkillSaysWhenThereAreNoRulesYet(t *testing.T) {
 	uid, cookie := signedIn(t, s, "fresh@example.test")
 	ws := s.firstWorkspaceOf(t, uid)
 
-	skill := downloadSkill(t, s, cookie, "?workspace="+ws)["saltmd/SKILL.md"]
+	skill := downloadSkill(t, s, cookie, "?workspace="+ws)["dworkspace/SKILL.md"]
 	if !strings.Contains(skill, "propose_workspace_rules") {
 		t.Error("with no rules the skill should point at how to draft some")
 	}

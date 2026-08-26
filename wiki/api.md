@@ -1,6 +1,6 @@
 # The REST API
 
-Everything the salt.md interface does, it does over an HTTP API that you can
+Everything the dworkspace interface does, it does over an HTTP API that you can
 call yourself: create pages, read and write database rows, search, upload files,
 export Markdown, watch changes live. This page is for people writing scripts —
 a backup job, a nightly import, a small internal tool. It covers how to
@@ -19,8 +19,8 @@ Three credentials work:
 
 | Credential | How it travels | Lives |
 | --- | --- | --- |
-| Browser session | the `salt_session` cookie, set by signing in | 90 days by default; an admin can set 1–365 |
-| **API token** | `Authorization: Bearer salt_…` | until it is revoked or its owner changes their password |
+| Browser session | the `dworkspace_session` cookie, set by signing in | 90 days by default; an admin can set 1–365 |
+| **API token** | `Authorization: Bearer dworkspace_…` | until it is revoked or its owner changes their password |
 | **OAuth access token** | `Authorization: Bearer …` | one hour, renewed in the background from a refresh token |
 
 The last two are both bearer headers, and a bearer is tried as an OAuth access
@@ -46,7 +46,7 @@ down.
 6. Press **Create token**.
 
 The token appears once, under the line "Copy this token now — it will not be
-shown again:". It looks like `salt_` followed by 48 hexadecimal characters. Only
+shown again:". It looks like `dworkspace_` followed by 48 hexadecimal characters. Only
 its hash is stored, so a lost token cannot be recovered — create a new one and
 press **Revoke** on the old.
 
@@ -68,7 +68,7 @@ turns down.
 ### Using it
 
 ```
-curl -H "Authorization: Bearer salt_…" https://salt.example.com/api/pages
+curl -H "Authorization: Bearer dworkspace_…" https://dworkspace.example.com/api/pages
 ```
 
 `GET /api/health` and `GET /api/me` are the two calls to start with.
@@ -115,7 +115,7 @@ exists.
 
 ### Signing an agent in instead
 
-salt.md is also an OAuth authorization server, so an agent can sign in rather
+dworkspace is also an OAuth authorization server, so an agent can sign in rather
 than carry a key that never dies. The whole flow is standard OAuth 2.1 with
 PKCE, and a client that already speaks it needs no special handling:
 

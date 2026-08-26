@@ -1,6 +1,6 @@
 # Permissions
 
-Who may see and do what. salt.md has two sets of roles that do not overlap:
+Who may see and do what. dworkspace has two sets of roles that do not overlap:
 **instance roles** decide who administers the server and the accounts on it, and
 **workspace roles** decide who reads and writes content. An instance admin is not
 automatically allowed into your workspace, and a workspace admin has no power

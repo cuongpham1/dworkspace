@@ -1,6 +1,6 @@
 # Sharing
 
-salt.md is private by default: every page needs a signed-in account with access
+dworkspace is private by default: every page needs a signed-in account with access
 to the workspace it lives in. Publishing a page is the one deliberate exception.
 It turns a single page into a read-only web page at an unguessable address that
 anyone can open without an account. This page covers how to publish, what the
@@ -18,7 +18,7 @@ covered in [Permissions](permissions.md).
 One page, read-only, no account, no session. The address looks like this:
 
 ```
-https://salt.example.com/public/4f9c2ab1e07d3856c2f1a904bb73e5d81c6a
+https://dworkspace.example.com/public/4f9c2ab1e07d3856c2f1a904bb73e5d81c6a
 ```
 
 The token is 18 random bytes written as 36 hexadecimal characters. Nothing about
@@ -69,7 +69,7 @@ Three behaviours of this menu are worth knowing before you use it a second time.
 confirmation. If you open the globe menu to see whether a page is shared, you
 have shared it. Use **Stop sharing** to undo that.
 
-**The menu never shows an existing link.** Nothing in salt.md reports whether a
+**The menu never shows an existing link.** Nothing in dworkspace reports whether a
 page is currently published, so the dialog cannot show you the link you made
 last week — it makes a fresh one, and the old one dies at that moment. The same
 happens when you change the expiry or leave the password field: each of those
@@ -108,7 +108,7 @@ that is already circulating; their **Stop sharing** kills it.
 
 ## The address in the link
 
-The host in the link is not necessarily the address you are looking at. salt.md
+The host in the link is not necessarily the address you are looking at. dworkspace
 picks the best external base it knows, in this order:
 
 | Source | Used when |
@@ -119,7 +119,7 @@ picks the best external base it knows, in this order:
 | The address of your own request | Nothing else is configured |
 
 That is why a link copied from `http://localhost:8420` can come back as
-`https://salt.example.com/public/…` — the point is that the link works from
+`https://dworkspace.example.com/public/…` — the point is that the link works from
 outside, which the address in your browser bar may not. See
 [Your own domain](domain.md).
 
@@ -179,10 +179,10 @@ heading, the description underneath it if the page has one, then the content.
 The browser tab shows the page title. There is no navigation and no sign-in
 prompt.
 
-There is no salt.md branding **on the document**. The two gates in front of it
+There is no dworkspace branding **on the document**. The two gates in front of it
 are the exception, and both name the product in the browser tab: the password
-form's tab reads "salt.md — protected page", the "Not found" page's tab reads
-"salt.md".
+form's tab reads "dworkspace — protected page", the "Not found" page's tab reads
+"dworkspace".
 
 Content survives with its structure: headings, bullet and numbered lists,
 checklist items (as ticked boxes that cannot be clicked), quotes, code blocks,
@@ -245,7 +245,7 @@ front of it, then a pipe table.
   column prints the internal id of whoever was picked from the member list —
   ids, not titles and not names.
 - **Rows marked private are included.** The private flag governs who may read
-  the page inside salt.md; it does not filter this table. Check a collection for
+  the page inside dworkspace; it does not filter this table. Check a collection for
   private rows before you publish it.
 - Sub-pages of the rows are not included.
 

@@ -6,7 +6,7 @@ import {
   removeAwarenessStates,
 } from 'y-protocols/awareness';
 
-// Thin realtime provider for salt.md's relay protocol (see server/collab.go).
+// Thin realtime provider for dworkspace's relay protocol (see server/collab.go).
 // The server replays the persisted doc, then relays updates. It never
 // interprets CRDT data; compaction happens via {"snapshotRequest":seq}.
 
@@ -14,7 +14,7 @@ const FRAME_UPDATE = 0;
 const FRAME_AWARENESS = 1;
 const FRAME_SNAPSHOT = 2;
 
-export class SaltProvider {
+export class DworkspaceProvider {
   doc: Y.Doc;
   awareness: Awareness;
   synced = false;

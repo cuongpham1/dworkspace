@@ -26,7 +26,7 @@ import (
 // So an uncapped container is treated as a small one. Being wrong in this
 // direction costs a bit of search coverage on a big machine; being wrong the
 // other way costs the server. Operators who know better say so, either with
-// --memory (which is worth setting anyway) or with SALT_MEMORY_MB.
+// --memory (which is worth setting anyway) or with DWORKSPACE_MEMORY_MB.
 const containerWithoutCap = 2 << 30 // 2 GiB
 
 // inContainer reports whether we are inside a container runtime. /.dockerenv
@@ -55,7 +55,7 @@ func availableMemory() int64 {
 		if n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64); err == nil && n > 0 {
 			return n << 20
 		}
-		log.Printf("memory: SALT_MEMORY_MB=%q is not a positive number of megabytes — ignoring it", v)
+		log.Printf("memory: DWORKSPACE_MEMORY_MB=%q is not a positive number of megabytes — ignoring it", v)
 	}
 	for _, p := range []string{
 		"/sys/fs/cgroup/memory.max",                   // cgroup v2
@@ -84,7 +84,7 @@ func availableMemory() int64 {
 // deployment shapes without needing that deployment. All four inputs in bytes
 // except the flag; 0 means "this source had nothing to say".
 //
-//	declared  — SALT_MEMORY_MB, the operator's word
+//	declared  — DWORKSPACE_MEMORY_MB, the operator's word
 //	cgroupCap — an enforced container limit (0 when unlimited or unreadable)
 //	host      — what /proc/meminfo reports, which inside a container may be
 //	            the machine rather than our share of it
@@ -108,7 +108,7 @@ func resolveMemory(declared, cgroupCap, host int64, container bool) int64 {
 }
 
 // hostMemory reads the machine's total memory from /proc/meminfo. Linux only,
-// which is where salt.md is deployed; elsewhere (a developer's Mac) it returns
+// which is where dworkspace is deployed; elsewhere (a developer's Mac) it returns
 // 0 and every caller falls back to its conservative default. Guessing a figure
 // would be worse than admitting we do not know one.
 func hostMemory() int64 {
@@ -151,7 +151,7 @@ func applyMemoryLimit() {
 	// reading, and cannot know that one flag fixes it.
 	if Env("MEMORY_MB") == "" && inContainer() && avail == containerWithoutCap {
 		log.Printf("memory: no container limit is set, so this assumes a small instance. " +
-			"Run with --memory=<size> (recommended) or set SALT_MEMORY_MB=<megabytes> " +
+			"Run with --memory=<size> (recommended) or set DWORKSPACE_MEMORY_MB=<megabytes> " +
 			"to use more — it only affects how much gets indexed, never whether an upload succeeds.")
 	}
 }

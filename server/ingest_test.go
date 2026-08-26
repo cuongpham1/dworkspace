@@ -15,7 +15,7 @@ import (
 // aussen unerreichbar sind — Hypervisor, Router, Cloud-Metadatendienste.
 func TestBlockedIP(t *testing.T) {
 	if allowPrivateImport {
-		t.Skip("SALT_IMPORT_ALLOW_PRIVATE is set")
+		t.Skip("DWORKSPACE_IMPORT_ALLOW_PRIVATE is set")
 	}
 	blocked := []string{
 		"127.0.0.1", "::1", // Schleife

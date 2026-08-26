@@ -1,6 +1,6 @@
-# The salt.md wiki
+# The dworkspace wiki
 
-salt.md is a self-hosted workspace for documents and structured data. One binary
+dworkspace is a self-hosted workspace for documents and structured data. One binary
 serves the interface, a REST API, an MCP endpoint for AI agents, a realtime
 collaboration relay and a change feed. Your data is one SQLite file and a folder
 of uploads, on a machine you control.
@@ -25,7 +25,7 @@ lying and `web/scripts/shoot-wiki.mjs` retakes them.
 
 | If you are | Read |
 | --- | --- |
-| new to salt.md | [Getting started](getting-started.md), then [Concepts](concepts.md) |
+| new to dworkspace | [Getting started](getting-started.md), then [Concepts](concepts.md) |
 | finding your way around | [The interface](interface.md) |
 | writing documents | [Pages](pages.md) → [Editor blocks](editor-blocks.md) |
 | building a database | [Collections](collections.md) → [Properties](properties.md) → [Views](views.md) |
@@ -78,10 +78,10 @@ lying and `web/scripts/shoot-wiki.mjs` retakes them.
 
 ### Connecting things
 
-- [Automation](automation.md) — the four ways salt.md reaches outside itself
+- [Automation](automation.md) — the four ways dworkspace reaches outside itself
 - [Webhooks](webhooks.md) — calling your address when something changes, and how to verify it
 - [Import and export](import-export.md) — every way in and every way out
-- [The REST API](api.md) — scripting salt.md without an agent
+- [The REST API](api.md) — scripting dworkspace without an agent
 
 ### Running it
 

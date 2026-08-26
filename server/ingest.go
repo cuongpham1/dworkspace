@@ -23,12 +23,12 @@ import (
 // of care but a hard limit of its context window.
 //
 // The reversal: the agent names only the SOURCE and the MAPPING (a few hundred
-// characters), Salt fetches the data itself and creates the pages. The import
+// characters), Dworkspace fetches the data itself and creates the pages. The import
 // is then independent of the size of the source and succeeds even for a weak
 // agent — all it has to do is start a job and ask how far along it is.
 //
 // The security boundary: a tool that lets the server fetch arbitrary URLs is a
-// classic SSRF hole. Salt sits in a private network and could reach neighbours
+// classic SSRF hole. Dworkspace sits in a private network and could reach neighbours
 // through it that are unreachable from outside — routers, hypervisors, cloud
 // metadata services. That is why safeDial checks EVERY resolved address and
 // dials exactly the one it checked (see there).
@@ -102,11 +102,11 @@ func (reg *ingestRegistry) update(id string, fn func(*ingestJob)) {
 // --- Fetching the source -----------------------------------------------------
 
 // allowPrivateImport opens imports up to private networks. Deliberately ONLY
-// through an environment variable at startup (SALT_IMPORT_ALLOW_PRIVATE=1), not
+// through an environment variable at startup (DWORKSPACE_IMPORT_ALLOW_PRIVATE=1), not
 // through the API and certainly not through MCP: whoever starts the service
 // makes that decision — an agent cannot. Meant for self-hosted sources on your
 // own network (your own Jira, your own wiki).
-var allowPrivateImport = os.Getenv("SALT_IMPORT_ALLOW_PRIVATE") == "1"
+var allowPrivateImport = os.Getenv("DWORKSPACE_IMPORT_ALLOW_PRIVATE") == "1"
 
 // blockedIP decides whether an address is off limits for the server. Everything
 // that is not publicly routable is refused: loopback, private networks,
@@ -173,7 +173,7 @@ func ingestHTTPClient() *http.Client {
 }
 
 // fetchSource fetches the source. headers allows authentication (bearer token,
-// API key) without Salt storing the credentials — they hold for this one fetch
+// API key) without Dworkspace storing the credentials — they hold for this one fetch
 // only.
 func fetchSource(rawURL string, headers map[string]string) ([]byte, error) {
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
@@ -183,7 +183,7 @@ func fetchSource(rawURL string, headers map[string]string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid url: %v", err)
 	}
-	req.Header.Set("User-Agent", "salt.md/"+Version+" (import)")
+	req.Header.Set("User-Agent", "dworkspace/"+Version+" (import)")
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -429,7 +429,7 @@ func mapItems(doc any, spec ingestSpec) ([]ingestItem, error) {
 // import, not per row.
 //
 // Without it the import is unusable for a weak agent: the 11 Trello lists are
-// not options in the Salt schema to begin with, every row would get an empty
+// not options in the Dworkspace schema to begin with, every row would get an empty
 // status, and the agent would have to notice the gap itself. The import knows
 // better than it does — so the import does it.
 func (s *Server) ensureIngestOptions(dbID string, items []ingestItem, nameToID map[string]string) (int, error) {

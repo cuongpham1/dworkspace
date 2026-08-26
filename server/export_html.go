@@ -67,6 +67,8 @@ func inlineHTML(raw json.RawMessage) string {
 			label := strProp(it.Props, "label", "Untitled")
 			id := strProp(it.Props, "pageId", "")
 			b.WriteString(`<a href="/p/` + html.EscapeString(id) + `">` + html.EscapeString(label) + "</a>")
+		case "mention":
+			b.WriteString(`<span class="mention">@` + html.EscapeString(strProp(it.Props, "label", "Unknown")) + "</span>")
 		default:
 			t := html.EscapeString(it.Text)
 			if t == "" {
@@ -535,11 +537,11 @@ func (srv *Server) pageHTML(p *page, printMode bool, o printOptions) string {
 	// the product follows. Formatting it here would have shipped one spelling to
 	// everybody, and it would have been ISO, which no reader writes by hand.
 	b.WriteString(`<script>` + paginateJS + "\n" +
-		`SALT_TITLE=` + jsString(title) + `;` +
-		`SALT_DAY=` + jsString(o.Date) + `;` +
-		`SALT_REGION=` + jsString(o.Region) + `;` +
-		`SALT_LANG=` + jsString(o.Language) + `;` +
-		`saltStart();</script>`)
+		`DWORKSPACE_TITLE=` + jsString(title) + `;` +
+		`DWORKSPACE_DAY=` + jsString(o.Date) + `;` +
+		`DWORKSPACE_REGION=` + jsString(o.Region) + `;` +
+		`DWORKSPACE_LANG=` + jsString(o.Language) + `;` +
+		`dworkspaceStart();</script>`)
 	b.WriteString("</body></html>")
 	return b.String()
 }
@@ -625,51 +627,51 @@ func applyPrintQuery(o printOptions, q url.Values) printOptions {
 // most documents that get printed are made of and the alternative is a page and
 // a half of white space.
 const paginateJS = `
-var SALT_TITLE='',SALT_DAY='',SALT_REGION='',SALT_LANG='';
+var DWORKSPACE_TITLE='',DWORKSPACE_DAY='',DWORKSPACE_REGION='',DWORKSPACE_LANG='';
 
-// saltLocale is the same rule i18n.ts follows: the account's region wins, and
+// dworkspaceLocale is the same rule i18n.ts follows: the account's region wins, and
 // with none, the browser tag whose base matches the interface language — so a
 // German interface in an English browser still writes 10.08.2026 rather than
 // 08/10/2026. Falling back to the browser's own default instead was wrong in
 // exactly that case, which is the common one for anybody who keeps their
 // browser in English.
-function saltLocale(){
-  if(SALT_REGION)return SALT_REGION;
+function dworkspaceLocale(){
+  if(DWORKSPACE_REGION)return DWORKSPACE_REGION;
   var tags=navigator.languages||[navigator.language||''];
-  if(SALT_LANG){
-    for(var i=0;i<tags.length;i++)if(tags[i].split('-')[0]===SALT_LANG)return tags[i];
-    return SALT_LANG;
+  if(DWORKSPACE_LANG){
+    for(var i=0;i<tags.length;i++)if(tags[i].split('-')[0]===DWORKSPACE_LANG)return tags[i];
+    return DWORKSPACE_LANG;
   }
   return tags[0]||undefined;
 }
 
-// saltDay writes a calendar day out the way the reader writes one. Same rule as
+// dworkspaceDay writes a calendar day out the way the reader writes one. Same rule as
 // format.ts, and the same trap avoided: new Date('2026-08-10') is UTC midnight,
 // which renders as the 9th west of Greenwich. Built from the parts instead, so
 // the day asked for is the day shown, everywhere on earth.
-function saltDay(iso){
+function dworkspaceDay(iso){
   if(!iso)return '';
   var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   if(!m)return iso;
   var d=new Date(+m[1],+m[2]-1,+m[3]);
   try{
-    return new Intl.DateTimeFormat(saltLocale()||undefined,
+    return new Intl.DateTimeFormat(dworkspaceLocale()||undefined,
       {year:'numeric',month:'2-digit',day:'2-digit'}).format(d);
   }catch(e){return iso;}
 }
 
 // The page box has to agree with the sheet, or the browser scales or splits it.
 // @page cannot be scoped to a class, so it is rewritten instead of switched.
-function saltPageRule(){
-  var st=document.getElementById('salt-page');
-  if(!st){st=document.createElement('style');st.id='salt-page';document.head.appendChild(st);}
+function dworkspacePageRule(){
+  var st=document.getElementById('dworkspace-page');
+  if(!st){st=document.createElement('style');st.id='dworkspace-page';document.head.appendChild(st);}
   st.textContent='@page{size:A4 '+(document.body.classList.contains('opt-landscape')?'landscape':'portrait')+';margin:0}';
 }
 
 // The last resort for a table that is still too wide once words may break: shrink
 // it to fit. Ugly, and far better than a column disappearing off the paper where
 // nobody sees that it is missing.
-function saltFitWide(body){
+function dworkspaceFitWide(body){
   var t=body.querySelectorAll('table');
   for(var i=0;i<t.length;i++){
     var el=t[i],box=el.getBoundingClientRect(),w=box.width,h=box.height;
@@ -700,7 +702,7 @@ function saltFitWide(body){
 //
 // Two passes rather than waiting first: the images only start loading once they
 // are in the document, and inside a <template> they never load at all.
-function saltAfterImages(cb){
+function dworkspaceAfterImages(cb){
   var imgs=document.querySelectorAll('#sheets img');
   var left=0,done=false;
   function fin(){if(done)return;done=true;cb();}
@@ -717,25 +719,25 @@ function saltAfterImages(cb){
   setTimeout(fin,4000);
 }
 
-function saltStart(){
-  var day=saltDay(SALT_DAY);
-  SALT_FOOT=day?SALT_TITLE+' \u00b7 '+day:SALT_TITLE;
+function dworkspaceStart(){
+  var day=dworkspaceDay(DWORKSPACE_DAY);
+  DWORKSPACE_FOOT=day?DWORKSPACE_TITLE+' \u00b7 '+day:DWORKSPACE_TITLE;
   var c=document.querySelector('#doc-cover');
   if(c){
     var slot=c.content.querySelector('.cover-day');
     if(slot)slot.textContent=day;
   }
-  saltRepaginate();
+  dworkspaceRepaginate();
 }
 
 // Cut, then cut again once the pictures have loaded and therefore have a size.
-function saltRepaginate(){
-  saltPaginate();
-  saltAfterImages(saltPaginate);
+function dworkspaceRepaginate(){
+  dworkspacePaginate();
+  dworkspaceAfterImages(dworkspacePaginate);
 }
-var SALT_FOOT='';
-function saltPaginate(){
-  saltPageRule();
+var DWORKSPACE_FOOT='';
+function dworkspacePaginate(){
+  dworkspacePageRule();
   var src=document.getElementById('doc-src'),cov=document.getElementById('doc-cover');
   var host=document.getElementById('sheets');
   if(!src||!host)return;
@@ -748,7 +750,7 @@ function saltPaginate(){
     var b=document.createElement('div');b.className='sheet-body';s.appendChild(b);
     var f=document.createElement('div');f.className='sheet-foot';
     f.innerHTML='<span class="foot-title"></span><span class="foot-num"></span>';
-    f.firstChild.textContent=SALT_FOOT;
+    f.firstChild.textContent=DWORKSPACE_FOOT;
     s.appendChild(f);host.appendChild(s);return b;
   }
   function over(b){return b.scrollHeight>b.clientHeight+1;}
@@ -783,7 +785,7 @@ function saltPaginate(){
     if(el.tagName==='TABLE'){
       var rest=el;
       while(over(cur)){
-        var moved=saltCutTable(rest,cur);
+        var moved=dworkspaceCutTable(rest,cur);
         if(!moved)break;
         cur=sheet('');
         cur.appendChild(moved);
@@ -794,14 +796,14 @@ function saltPaginate(){
     // Forcing it would only hide the end of it.
   }
   var bodies=document.querySelectorAll('.sheet:not(.sheet-cover) .sheet-body');
-  for(var b=0;b<bodies.length;b++)saltFitWide(bodies[b]);
-  saltNumber();
+  for(var b=0;b<bodies.length;b++)dworkspaceFitWide(bodies[b]);
+  dworkspaceNumber();
 }
 
-// saltCutTable moves rows off the end of a table until it fits, and returns the
+// dworkspaceCutTable moves rows off the end of a table until it fits, and returns the
 // clone that carries them. The head row goes along, so a table continued on the
 // next sheet still says what its columns are.
-function saltCutTable(tbl,body){
+function dworkspaceCutTable(tbl,body){
   var rows=tbl.querySelectorAll('tr');
   if(rows.length<2)return null;
   var moved=[];
@@ -822,7 +824,7 @@ function saltCutTable(tbl,body){
 
 // The cover is not page one. Nobody numbers a title page, and starting the
 // count after it is what makes "2 / 5" mean the second page of the document.
-function saltNumber(){
+function dworkspaceNumber(){
   var sheets=[].slice.call(document.querySelectorAll('.sheet:not(.sheet-cover)'));
   for(var i=0;i<sheets.length;i++){
     var n=sheets[i].querySelector('.foot-num');
@@ -834,7 +836,7 @@ document.addEventListener('change',function(e){
   var t=e.target;
   if(!t||!t.dataset||!t.dataset.cls)return;
   document.body.classList.toggle(t.dataset.cls,t.checked);
-  saltRepaginate();
+  dworkspaceRepaginate();
 });
 document.addEventListener('DOMContentLoaded',function(){
   document.querySelectorAll('.doc-side input[data-cls]').forEach(function(c){

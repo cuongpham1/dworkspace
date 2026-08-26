@@ -56,7 +56,7 @@ func TestBackrelationFindsARowWrittenWithoutItsList(t *testing.T) {
 	systems := s.makeCollection(t, ws, uid, "Systems", `[{"id":"name","name":"Name","type":"text"}]`)
 	tasks := s.makeCollection(t, ws, uid, "Tasks", `[{"id":"system","name":"System","type":"relation","relationCollection":"`+systems+`"}]`)
 
-	sysRow := s.makeRow(t, ws, uid, systems, "Salt", `{}`)
+	sysRow := s.makeRow(t, ws, uid, systems, "Dworkspace", `{}`)
 	// One task written the correct way, one written the way agents actually did.
 	s.makeRow(t, ws, uid, tasks, "Proper", `{"system":["`+sysRow+`"]}`)
 	s.makeRow(t, ws, uid, tasks, "Bare string", `{"system":"`+sysRow+`"}`)
@@ -77,7 +77,7 @@ func TestSetPropertiesWrapsASingleValueIntoAList(t *testing.T) {
 	ws := s.firstWorkspaceOf(t, uid)
 
 	systems := s.makeCollection(t, ws, uid, "Systems", `[{"id":"name","name":"Name","type":"text"}]`)
-	sysRow := s.makeRow(t, ws, uid, systems, "Salt", `{}`)
+	sysRow := s.makeRow(t, ws, uid, systems, "Dworkspace", `{}`)
 	tasks := s.makeCollection(t, ws, uid, "Tasks", `[
 		{"id":"system","name":"System","type":"relation","relationCollection":"`+systems+`"},
 		{"id":"tags","name":"Tags","type":"multiselect","options":[{"id":"bug","name":"Bug"}]},

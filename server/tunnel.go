@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-// Built-in public access (Welle 40): salt.md manages a cloudflared process
+// Built-in public access (Welle 40): dworkspace manages a cloudflared process
 // itself so exposing an instance is a product feature, not an ops exercise.
 // Two modes:
 //   - "quick": an account-less TryCloudflare tunnel with a throwaway URL —

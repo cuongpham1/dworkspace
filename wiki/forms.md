@@ -200,7 +200,7 @@ and **Revoke**.
 The address looks like this:
 
 ```
-https://salt.example.com/form/8c1f4a2e9b7d05c3a6e1f8b4d29c7053ab6e
+https://dworkspace.example.com/form/8c1f4a2e9b7d05c3a6e1f8b4d29c7053ab6e
 ```
 
 The token is 36 hexadecimal characters from random bytes. The host part is not
@@ -242,7 +242,7 @@ at first. Then, from top to bottom:
 - the description, if there is one;
 - **Title** with its red `*`, then the fields, in schema order;
 - the submit button;
-- a footer reading **Made with salt.md**.
+- a footer reading **Made with dworkspace**.
 
 Submitting replaces the card with **Thank you!** / **Your answer has been
 submitted.** and a **Send another answer** button, so one visitor can file several

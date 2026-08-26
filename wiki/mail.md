@@ -1,6 +1,6 @@
 # Sending email
 
-salt.md can send email, and it sends very little of it. There are exactly three
+dworkspace can send email, and it sends very little of it. There are exactly three
 messages, and every one of them is a notification about access — never about
 your content. This page is for whoever runs the instance: it covers what gets
 sent, what those messages say, the two ways to configure sending, every field in
@@ -10,13 +10,13 @@ Configuration is instance-wide and only an **instance admin** sees it. An
 instance with no mail configured at all works completely — it just makes you
 copy links by hand.
 
-## What salt.md sends
+## What dworkspace sends
 
 | Message | Subject | Goes to | Sent when |
 | --- | --- | --- | --- |
-| Invitation | `You have been invited to salt.md` | the address typed into the invite field | somebody is invited to a workspace |
+| Invitation | `You have been invited to dworkspace` | the address typed into the invite field | somebody is invited to a workspace |
 | Emergency access notice | `Emergency access to <workspace name>` | every admin of that workspace | the instance owner takes time-limited read access |
-| Test message | `salt.md test message` | the admin who pressed the button | you press **Send test mail** |
+| Test message | `dworkspace test message` | the admin who pressed the button | you press **Send test mail** |
 
 That is the whole list. There are no comment notifications, no mention alerts,
 no page-change digests, no form-submission emails, and no marketing of any kind.
@@ -25,10 +25,10 @@ travel by mail.
 
 **The subjects are fixed.** Renaming the instance under *Instance settings →
 General* changes the sign-in page and the browser title, and does not touch
-them: an invitation says "salt.md" whatever your instance is called. Only the
+them: an invitation says "dworkspace" whatever your instance is called. Only the
 emergency notice carries a name of yours, and that is the workspace's.
 
-There is also **no forgotten-password email**. Nothing in salt.md sends a reset
+There is also **no forgotten-password email**. Nothing in dworkspace sends a reset
 link, so no mailbox is a route into an account. A password is changed in the
 account dialog by its owner, and only the instance owner can change somebody
 else's — an admin who cannot reach a colleague's account sends them a fresh
@@ -43,7 +43,7 @@ somebody on the phone what to look for.
 
 The invitation:
 
-> You have been invited to a salt.md workspace.
+> You have been invited to a dworkspace workspace.
 >
 > Open this link to join:
 > …
@@ -128,7 +128,7 @@ sending; a person signed in to the interface has to. See [The API](api.md).
 
 ## Two ways to send
 
-salt.md sends either through a Google or Microsoft mailbox you connect once, or
+dworkspace sends either through a Google or Microsoft mailbox you connect once, or
 through a plain SMTP server. If a mailbox is connected it is always used and
 SMTP is ignored, even when both are filled in. To fall back to SMTP, press
 **Disconnect**. Both sections sit under each other on the same tab:
@@ -137,7 +137,7 @@ SMTP is ignored, even when both are filled in. To fall back to SMTP, press
 
 ### A connected Google or Microsoft mailbox
 
-The section is headed *Sending through Google / Microsoft — no SMTP*. salt.md
+The section is headed *Sending through Google / Microsoft — no SMTP*. dworkspace
 sends through the provider's own API — no server address, no port, no app
 password, and it keeps working where a provider has switched basic
 authentication off for SMTP.
@@ -155,7 +155,7 @@ navigates away and shows a single line, *Enter the client ID and secret in the
 Access tab first.* Go back, put the ID in, save, and start again.
 
 **Connecting is its own consent, separate from sign-in.** Setting up Google for
-login grants salt.md nothing about mail: this flow asks for a send permission of
+login grants dworkspace nothing about mail: this flow asks for a send permission of
 its own and stores its own token. Doing one does not do the other.
 
 To connect:
@@ -182,16 +182,16 @@ What each provider is asked for:
 `offline_access` is what lets the **Microsoft** connection keep working tomorrow
 without somebody clicking consent again. Google is asked for offline access a
 different way, and its window is additionally forced to show the consent screen
-every time — even for an account that has approved salt.md before. That is not
+every time — even for an account that has approved dworkspace before. That is not
 an oversight to tidy away: without the forced screen Google hands back no
 lasting permission at all, and the connection would work once and then stop.
 
 **Any mailbox will do.** Both sign-in windows are forced to show the account
 picker, and the account you choose has nothing to do with the account you sign
-in to salt.md with — a dedicated `noreply@example.com` sending mailbox is a
+in to dworkspace with — a dedicated `noreply@example.com` sending mailbox is a
 perfectly good choice.
 
-**If you opened salt.md on a different address than its public base URL**,
+**If you opened dworkspace on a different address than its public base URL**,
 pressing Connect sends the browser to the same step on the public address,
 because the flow's cookie belongs to that host. If you are signed in there, the
 provider's window opens straight away and you notice nothing. If you are not,
@@ -226,8 +226,8 @@ applies only to the connected-mailbox path — with SMTP, the sender is the
 
 #### Disconnecting
 
-**Disconnect** makes salt.md forget the provider, the stored token and the
-address, and reports *Mail connection disconnected*. It clears the salt.md side
+**Disconnect** makes dworkspace forget the provider, the stored token and the
+address, and reports *Mail connection disconnected*. It clears the dworkspace side
 only: the permission you granted stays listed in your Google or Microsoft
 account until you remove it there.
 
@@ -250,7 +250,7 @@ when the mail has to come from a service address on your own infrastructure.
 | Port | `587 / 465` | arrives pre-filled with 587. Leave a real number in it |
 | User | — | login name. Leave blank for a relay that wants no authentication |
 | Password | `•••••• (unchanged)` or `not set` | never sent back to the browser |
-| Sender (From) | `salt@example.com` | the From address |
+| Sender (From) | `dworkspace@example.com` | the From address |
 
 The behaviour behind those fields:
 
@@ -263,8 +263,8 @@ The behaviour behind those fields:
   address rather than quietly using 587. If in doubt, type the number.
 - **A blank User means no authentication is attempted at all.** That is right
   for an internal relay and wrong for every hosted provider.
-- **A blank Sender becomes** `salt@` plus the host name — so an instance sending
-  through `smtp.example.com` sends as `salt@smtp.example.com`. Most providers
+- **A blank Sender becomes** `dworkspace@` plus the host name — so an instance sending
+  through `smtp.example.com` sends as `dworkspace@smtp.example.com`. Most providers
   reject a From address they do not recognise, so fill it in.
 - **The password is write-only, and it cannot be taken back out.** The dialog
   shows `•••••• (unchanged)` when one is stored and `not set` when none is;
@@ -282,13 +282,13 @@ block is the two Connect buttons until then.
 
 It sends to **your own address** — the one on the account you are signed in
 with — through whatever is currently stored, and reports *Test mail sent to*
-that address on success. The message is short by design: subject *salt.md test
+that address on success. The message is short by design: subject *dworkspace test
 message*, one line of body.
 
 Failures read differently depending on which path failed. Through a connected
 mailbox you get a translated sentence with the provider's own words in brackets
 after it. Through SMTP you get the mail server's raw error text and nothing
-else — no sentence from salt.md, no brackets — because that text comes from the
+else — no sentence from dworkspace, no brackets — because that text comes from the
 server you are talking to. A refused connection, a rejected login and a TLS
 complaint all arrive that way, in English, worded by whoever wrote that mail
 server.
@@ -322,9 +322,9 @@ translate a sentence somebody else wrote.
 | *Expired — please connect again.* | More than ten minutes passed between pressing Connect and finishing. |
 | *Could not be verified — please connect again.* | The round trip could not be matched to the one you started. Start again from the Email tab, not from a bookmarked link. |
 | *No authorization code.* | The provider sent the browser back without a code. Nothing follows in brackets. |
-| *Token exchange failed.* | salt.md could not reach the provider's token endpoint at all — a network or DNS problem, or no answer within fifteen seconds. Nothing follows in brackets. |
+| *Token exchange failed.* | dworkspace could not reach the provider's token endpoint at all — a network or DNS problem, or no answer within fifteen seconds. Nothing follows in brackets. |
 | *The provider refused the connection.* | The provider rejected the exchange itself — a wrong client secret, or a redirect URI it does not know. Its own words follow in brackets. |
-| *No refresh token received — remove the access in your account settings and connect again.* | The provider handed back a one-off permission instead of a lasting one, which happens when the account has already approved this app. Remove salt.md from that account's connected apps and connect once more. |
+| *No refresh token received — remove the access in your account settings and connect again.* | The provider handed back a one-off permission instead of a lasting one, which happens when the account has already approved this app. Remove dworkspace from that account's connected apps and connect once more. |
 
 Three cases worth naming separately:
 
@@ -346,7 +346,7 @@ send. Put the client ID back, or press **Disconnect** and connect again.
 ## Links in the mail point at the wrong address
 
 Invitation links are built from the instance's public address, not from whatever
-host the browser happened to use. salt.md picks the first of these that exists:
+host the browser happened to use. dworkspace picks the first of these that exists:
 the **Public base URL** from *Instance settings → General*, then a configured
 HTTPS domain, then a running tunnel address, and only then the address of the
 request itself.
@@ -364,7 +364,7 @@ the invite has expired and needs a new one.
 ## Turning it off
 
 Clear the SMTP **Host** and press **Save**; press **Disconnect** if a mailbox is
-connected. Sending is then off, and salt.md behaves exactly as it does on an
+connected. Sending is then off, and dworkspace behaves exactly as it does on an
 instance that never configured mail: invitations show their link on screen for
 you to send however you like, and emergency-access notices exist only in the
 log.

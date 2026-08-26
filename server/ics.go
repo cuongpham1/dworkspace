@@ -182,24 +182,24 @@ func (s *Server) handleICSFeed(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var b strings.Builder
-	name := "salt.md"
+	name := "dworkspace"
 	if scopeCol != "" {
 		// The calendar's NAME is what the subscriber sees in their app, so it
 		// says which collection or workspace this feed is — three feeds called
-		// "salt.md" would be indistinguishable there.
+		// "dworkspace" would be indistinguishable there.
 		var title string
 		s.db.QueryRow(`SELECT title FROM pages WHERE id = ?`, scopeCol).Scan(&title)
 		if title != "" {
-			name = "salt.md · " + title
+			name = "dworkspace · " + title
 		}
 	} else if scopeWS != "" {
 		var title string
 		s.db.QueryRow(`SELECT name FROM workspaces WHERE id = ?`, scopeWS).Scan(&title)
 		if title != "" {
-			name = "salt.md · " + title
+			name = "dworkspace · " + title
 		}
 	}
-	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//salt.md//Calendar//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:" + icsEscape(name) + "\r\n")
+	b.WriteString("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//dworkspace//Calendar//EN\r\nCALSCALE:GREGORIAN\r\nX-WR-CALNAME:" + icsEscape(name) + "\r\n")
 
 	if len(ws) > 0 {
 		wargs := make([]any, len(ws))
@@ -276,7 +276,7 @@ func (s *Server) handleICSFeed(w http.ResponseWriter, r *http.Request) {
 							title = "Untitled"
 						}
 						b.WriteString("BEGIN:VEVENT\r\n")
-						b.WriteString("UID:" + rw.id + "-" + pid + "@salt.md\r\n")
+						b.WriteString("UID:" + rw.id + "-" + pid + "@dworkspace\r\n")
 						b.WriteString("DTSTAMP:" + stamp + "\r\n")
 						b.WriteString(dt + "\r\n")
 						b.WriteString("SUMMARY:" + icsEscape(title) + " (" + icsEscape(pname) + ")\r\n")
@@ -290,6 +290,6 @@ func (s *Server) handleICSFeed(w http.ResponseWriter, r *http.Request) {
 	b.WriteString("END:VCALENDAR\r\n")
 
 	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
-	w.Header().Set("Content-Disposition", `inline; filename="salt.ics"`)
+	w.Header().Set("Content-Disposition", `inline; filename="dworkspace.ics"`)
 	fmt.Fprint(w, b.String())
 }

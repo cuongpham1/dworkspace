@@ -157,7 +157,7 @@ CREATE INDEX IF NOT EXISTS idx_files_ws ON files(workspace_id);
 -- the part that is verified, and both are shown together.
 --
 -- last_seen is refreshed by any call from that account, so an agent working
--- inside salt.md stays fresh without doing anything. It does NOT expire the
+-- inside dworkspace stays fresh without doing anything. It does NOT expire the
 -- entry: an agent has no clock and cannot wake itself to say "still here", so
 -- an entry that vanished after ten minutes would erase a three-hour job. It
 -- only fades in the interface, and a sweep removes what has been silent for
@@ -543,6 +543,38 @@ func openDB(path string) (*sql.DB, error) {
 			return nil, fmt.Errorf("migrate users.%s: %w", c[0], err)
 		}
 	}
+	// User mentions (@name in a page body) and whether the mentioned person has
+	// seen them. Derived from page content like `links`, but with one piece of
+	// state the links table does not need: seen_at.
+	//
+	// PRIMARY KEY (page_id, user_id) is what makes this safe to recompute. A
+	// page is re-materialized on almost every keystroke burst, and an INSERT
+	// that fired per save would notify the same person dozens of times for one
+	// mention. INSERT OR IGNORE keeps the FIRST row — so first_seen_at is
+	// stable, and re-saving an unchanged mention is a no-op rather than a new
+	// notification.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS mentions (
+		page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+		user_id TEXT NOT NULL,
+		block_id TEXT NOT NULL DEFAULT '',
+		first_seen_at TEXT NOT NULL,
+		seen_at TEXT,
+		PRIMARY KEY (page_id, user_id)
+	)`); err != nil {
+		return nil, fmt.Errorf("create mentions: %w", err)
+	}
+	// block_id arrived after the table did, so an instance created in between
+	// has the table without the column. CREATE TABLE IF NOT EXISTS would not
+	// add it — this is the only thing that reaches those rows.
+	if err := ensureColumn(db, "mentions", "block_id", `block_id TEXT NOT NULL DEFAULT ''`); err != nil {
+		return nil, fmt.Errorf("migrate mentions.block_id: %w", err)
+	}
+	// The unread query is "mine, not yet seen, newest first" — index for it.
+	if _, err := db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_mention_user ON mentions(user_id, seen_at, first_seen_at)`,
+	); err != nil {
+		return nil, fmt.Errorf("index mentions: %w", err)
+	}
 	// Record the schema/app version so an operator (and future migrations) can
 	// see what a data dir was last written by. Additive, idempotent.
 	db.Exec(`INSERT INTO schema_meta (key, value) VALUES ('version', ?)
@@ -553,10 +585,10 @@ func openDB(path string) (*sql.DB, error) {
 func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 const welcomeContent = `[
- {"type":"paragraph","content":[{"type":"text","text":"Welcome to ","styles":{}},{"type":"text","text":"salt.md","styles":{"bold":true}},{"type":"text","text":" — a fast, lightweight, open-source workspace for your notes, docs and ideas. 🧂","styles":{}}]},
+ {"type":"paragraph","content":[{"type":"text","text":"Welcome to ","styles":{}},{"type":"text","text":"dworkspace","styles":{"bold":true}},{"type":"text","text":" — a fast, lightweight, open-source workspace for your notes, docs and ideas. 🧂","styles":{}}]},
  {"type":"heading","props":{"level":2},"content":[{"type":"text","text":"Everything is a block","styles":{}}]},
  {"type":"paragraph","content":[{"type":"text","text":"Type ","styles":{}},{"type":"text","text":"/","styles":{"code":true}},{"type":"text","text":" anywhere to insert headings, lists, quotes, code blocks, images, tables and more. Drag blocks by their handle to rearrange them.","styles":{}}]},
- {"type":"checkListItem","props":{"checked":true},"content":[{"type":"text","text":"Install salt.md","styles":{}}]},
+ {"type":"checkListItem","props":{"checked":true},"content":[{"type":"text","text":"Install dworkspace","styles":{}}]},
  {"type":"checkListItem","props":{"checked":false},"content":[{"type":"text","text":"Create your first page (button in the sidebar)","styles":{}}]},
  {"type":"checkListItem","props":{"checked":false},"content":[{"type":"text","text":"Press Ctrl/Cmd + K to search everything","styles":{}}]},
  {"type":"heading","props":{"level":2},"content":[{"type":"text","text":"Your data stays yours","styles":{}}]},
@@ -590,7 +622,7 @@ func (s *Server) seed() error {
 	id := newID()
 	_, err = s.db.Exec(
 		`INSERT INTO pages (id, parent_id, title, icon, content, position, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, 1, ?, ?)`,
-		id, "Welcome to salt.md", "🧂", welcomeContent, ts, ts,
+		id, "Welcome to dworkspace", "🧂", welcomeContent, ts, ts,
 	)
 	if err != nil {
 		return err

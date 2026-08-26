@@ -140,7 +140,7 @@ func (s *Server) mcpWorkingOn(u *user, pageID, agent, label, note string, expect
 
 // touchPresence refreshes last_seen for whatever this account has checked in on
 // this page. Called after a successful MCP write, so an agent that works inside
-// salt.md stays fresh without spending a call on saying so.
+// dworkspace stays fresh without spending a call on saying so.
 func (s *Server) touchPresence(userID, pageID string) {
 	if userID == "" || pageID == "" {
 		return

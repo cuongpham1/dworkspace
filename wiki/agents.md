@@ -1,6 +1,6 @@
 # Agents
 
-salt.md carries an MCP server inside the same binary that serves the interface.
+dworkspace carries an MCP server inside the same binary that serves the interface.
 An AI agent connects to it and works on your pages the way you do — searching,
 reading, writing, maintaining collections, commenting, saying what it is working
 on. This page is the overview: what MCP is, where the endpoint is, the two ways
@@ -14,7 +14,7 @@ reading this to find out how the place works.
 
 The Model Context Protocol is a common language between an AI client and a
 program that holds data. The client asks the program which tools it offers, the
-program answers with a list, and from then on the client can call them. salt.md
+program answers with a list, and from then on the client can call them. dworkspace
 implements the server half: no plugin, no separate process, no external service.
 Start the binary and the endpoint is there. What an agent gets is **33 tools**,
 each one an action that already exists in the product, under the permissions of
@@ -34,11 +34,11 @@ true of it and will save you a debugging session:
 | Pace | About 240 calls a minute per account, with a burst of 60. Over that, a call comes back with `rate limit exceeded — too many requests, slow down`. |
 | Deactivated accounts | Refused here in their own right, not only in the browser: `this account has been deactivated`. |
 
-When a client connects, the server introduces itself as **salt.md**, reports its
+When a client connects, the server introduces itself as **dworkspace**, reports its
 version, and sends one instruction with it: workspaces can carry rules their
 admin wrote for agents — read them before writing into a workspace. It sends its
 own logo along with the introduction, so a client that reads icons shows the
-salt.md mark instead of a placeholder. Not every client does; nothing depends
+dworkspace mark instead of a placeholder. Not every client does; nothing depends
 on it.
 
 ## Connecting an agent
@@ -61,7 +61,7 @@ the network still works for an agent outside it.
 
 | | **Sign in** | **Token in the address** |
 | --- | --- | --- |
-| The address | `https://salt.example.com/mcp` | `https://salt.example.com/mcp/<token>` |
+| The address | `https://dworkspace.example.com/mcp` | `https://dworkspace.example.com/mcp/<token>` |
 | What is secret | Nothing in the address | The address itself |
 | Who decides the reach | The client asks for read, or for read and write. You decide, on a consent screen, which workspaces it gets — and whether it gets anything at all. | Whoever creates the token, in advance: the scope and the workspaces both |
 | Lifetime | An access token expires after an hour and is renewed in the background | Until it is revoked |
@@ -301,7 +301,7 @@ itself a dated decision. See [Comments and notes](comments-and-notes.md).
 | --- | --- |
 | `workspace` | Create a workspace, or rename one and set its icon. `from_workspace` copies another one's structure — rules, databases, schemas, views, no content. |
 | `propose_workspace_rules` | Submit a draft of the rules. Workspace admins only, and it never activates by itself. |
-| `import_url` | Bulk-import records from a JSON URL. Salt fetches and writes them, so none of the content passes through the agent. |
+| `import_url` | Bulk-import records from a JSON URL. Dworkspace fetches and writes them, so none of the content passes through the agent. |
 | `get_import_status` | Progress of that job. |
 
 `import_url` reaches **publicly routable addresses only**. Loopback, private
@@ -400,8 +400,8 @@ if both exist. The second is the one that lasts. A skill is loaded when it is
 invoked; that file is read at the start of every session, by every agent that
 opens the repository.
 
-For Claude Code the folder goes in `~/.claude/skills/saltmd/` for every project,
-or `.claude/skills/saltmd/` for one repository. Anything else that reads
+For Claude Code the folder goes in `~/.claude/skills/dworkspace/` for every project,
+or `.claude/skills/dworkspace/` for one repository. Anything else that reads
 instruction files can use the skill directly — it is plain Markdown with a small
 header.
 

@@ -1,6 +1,6 @@
 # Single sign-on
 
-salt.md can hand sign-in to **Google** or **Microsoft**. People then press a
+dworkspace can hand sign-in to **Google** or **Microsoft**. People then press a
 button on the sign-in screen instead of remembering another password, and you
 stop keeping a second set of credentials. This page is for whoever sets that up:
 the exact fields, the address to register with the provider, how an account is
@@ -8,13 +8,13 @@ matched or created, how long a sign-in lasts, and every error the flow can
 produce.
 
 Two providers, and only two. There is no generic OpenID Connect field, no SAML,
-and no way to point salt.md at a different identity provider. Setting it up is
+and no way to point dworkspace at a different identity provider. Setting it up is
 an instance admin's job and takes two values per provider.
 
 ## What it does, and what it does not
 
 Single sign-on answers one question: **which email address is this person?**
-Everything else stays with salt.md.
+Everything else stays with dworkspace.
 
 - **It does not decide who may have an account.** That is the registration
   policy — see [Who gets an account](#who-gets-an-account) below.
@@ -28,11 +28,11 @@ Everything else stays with salt.md.
 - **It does not replace password sign-in.** There is no switch that turns
   passwords off. The sign-in screen always shows the email and password fields,
   and the provider buttons underneath.
-- **It does not ask for a two-factor code.** Two-factor sign-in in salt.md
+- **It does not ask for a two-factor code.** Two-factor sign-in in dworkspace
   applies to password sign-in. On this route the second factor is whatever your
   provider enforces. ([Account](account.md))
 
-## What you enter in salt.md
+## What you enter in dworkspace
 
 Account menu (your avatar) → **Instance settings** → the **Access** tab. Admin
 only. The section is headed **Sign in with Google / Microsoft (OAuth)** and
@@ -63,7 +63,7 @@ Four things about these fields:
 
 ## The address to register with the provider
 
-The provider needs to know where to send the browser back. salt.md shows both
+The provider needs to know where to send the browser back. dworkspace shows both
 addresses ready to copy in the same section, under the labels **Google** and
 **Microsoft** — click one and it selects itself.
 
@@ -81,12 +81,12 @@ https://notes.example.com/api/oauth/google/callback
 https://notes.example.com/api/oauth/microsoft/callback
 ```
 
-Register it exactly as salt.md builds it — scheme, host, port, path. salt.md
+Register it exactly as dworkspace builds it — scheme, host, port, path. dworkspace
 sends that string twice: once when it sends the browser to the provider, and
 again when it exchanges the code for a token. Any difference between what it
 sends and what is registered ends the sign-in with *Sign-in failed.*
 
-### Which address salt.md puts in the box
+### Which address dworkspace puts in the box
 
 The address shown in the dialog is built from the first of these that exists:
 
@@ -105,15 +105,15 @@ Two warnings can appear underneath it, and both are worth reading:
 > the base URL.
 
 **Set the public base URL.** It is the one setting that makes this predictable:
-with it set, salt.md sends the same address to the provider every time, no
-matter which host the browser used. Without it, the address salt.md sends is
+with it set, dworkspace sends the same address to the provider every time, no
+matter which host the browser used. Without it, the address dworkspace sends is
 whatever host the browser is on at that moment — which is exactly how a
 registration that matches in the dialog fails in practice. See
 [Reaching it from outside](domain.md).
 
 ### The scopes
 
-salt.md asks for `openid email profile` and nothing else: who you are, your
+dworkspace asks for `openid email profile` and nothing else: who you are, your
 address, your name. It cannot read mail, files or calendars with this, and it
 never asks for offline access, so it holds nothing after the sign-in is over.
 
@@ -129,9 +129,9 @@ those are the things to look for:
   types: “Any org + personal accounts”) → Redirect URI (Web): as above but with*
   `/api/oauth/microsoft/callback` *→ Certificates & secrets → client secret.*
 
-One thing about Microsoft is ours to state rather than theirs: **salt.md talks
+One thing about Microsoft is ours to state rather than theirs: **dworkspace talks
 to the `common` endpoint**, which accepts work, school and personal accounts
-alike. salt.md does not check which tenant a person came from. If you want one
+alike. dworkspace does not check which tenant a person came from. If you want one
 tenant only, restrict it in the app registration — that is the only place the
 restriction can live.
 
@@ -160,7 +160,7 @@ returns to that path when the round trip is over.
 Only a path on this instance is accepted. An absolute address, one starting
 `//`, a backslash after the slash, anything with a line break — all dropped, and
 the sign-in ends at the top of the workspace as if nothing had been asked for.
-The destination rides in the short-lived cookie salt.md sets when the sign-in
+The destination rides in the short-lived cookie dworkspace sets when the sign-in
 starts, not in the address bar, so nothing the provider echoes back can steer
 it, and it is checked a second time on the way out.
 
@@ -182,14 +182,14 @@ how often people go past the provider.
 
 ### Pressing the button while somebody is already signed in
 
-The provider buttons work whether or not a session exists. salt.md does not ask
+The provider buttons work whether or not a session exists. dworkspace does not ask
 and does not warn: the account the provider returns is signed in, and the
 browser now belongs to that account instead of the previous one. Quick if you
 keep two accounts, a surprise if you expected a question.
 
 ## Who gets an account
 
-The address the provider returns (lower-cased) is the only key. salt.md looks
+The address the provider returns (lower-cased) is the only key. dworkspace looks
 for an account with that address, and takes it **only if the address is
 confirmed and the account is not deactivated**.
 
@@ -213,7 +213,7 @@ Choosing **Email domain allowed** makes a second field appear on the same tab:
 **Allowed domains (comma separated)**. It is only there while that policy is
 selected.
 
-salt.md compares the part after the **last** `@`, ignoring case, and matches a
+dworkspace compares the part after the **last** `@`, ignoring case, and matches a
 whole domain only — an entry of `example.com` does not admit an address at
 `mail.example.com`, and there is no wildcard. Spaces around the commas do not
 matter. An empty entry matches nothing, so a trailing comma is harmless.
@@ -276,7 +276,7 @@ When the policy does allow it, the account is created immediately:
   else. ([Workspaces](workspaces.md))
 - **A confirmed address**, which is what lets the button work the second time.
 - **No usable password.** The account is created with a random one that nobody
-  knows, and salt.md has no password-reset flow. Until somebody sets one, the
+  knows, and dworkspace has no password-reset flow. Until somebody sets one, the
   provider button is the only way in.
 
 Setting a password on such an account is possible in exactly one place, and it
@@ -328,11 +328,11 @@ out of the address bar, so a reload does not show it again.
 | --- | --- |
 | *This sign-in method is not configured.* | that provider has no client ID or no secret stored — typically a bookmarked link after the credentials were cleared |
 | *Sign-in was cancelled.* | the provider sent an error back: somebody pressed cancel, or consent was refused. The provider's own code is in the brackets |
-| *Sign-in expired — please try again.* | the sign-in was not finished within **10 minutes**, or the browser did not send back the cookie salt.md set when it started |
+| *Sign-in expired — please try again.* | the sign-in was not finished within **10 minutes**, or the browser did not send back the cookie dworkspace set when it started |
 | *Sign-in could not be verified — please try again.* | the cookie came back but does not fit this attempt — a different provider, a stale tab, a mismatched state |
 | *No authorization code received.* | the provider returned neither a code nor an error |
-| *Token exchange failed.* | salt.md could not reach the provider (15-second limit): no outbound internet, DNS, or a firewall |
-| *Sign-in failed.* | the provider refused the exchange — wrong client secret, or a redirect address that does not match the registered one. Its explanation is in the brackets, or *token response unreadable* if it sent something salt.md could not parse |
+| *Token exchange failed.* | dworkspace could not reach the provider (15-second limit): no outbound internet, DNS, or a firewall |
+| *Sign-in failed.* | the provider refused the exchange — wrong client secret, or a redirect address that does not match the registered one. Its explanation is in the brackets, or *token response unreadable* if it sent something dworkspace could not parse |
 | *The provider did not supply an email address.* | no address in the token and none from the provider's userinfo endpoint |
 | *This Google address is not verified.* | Google only, and Google's own verdict on the address |
 | *This address belongs to an account that has not confirmed it. Please sign in with a password or contact your administrator.* | an account holds this address but it is not confirmed — **or the account is deactivated** |
@@ -350,7 +350,7 @@ successful or not. ([History and audit](history-and-audit.md))
 
 **The whole round trip has to happen on one address.**
 
-When a sign-in starts, salt.md sets a short-lived cookie in the browser and
+When a sign-in starts, dworkspace sets a short-lived cookie in the browser and
 checks it when the provider sends the browser back. That cookie belongs to the
 host that set it. Start on `https://notes.example.com` and come back on
 `http://192.0.2.10:8420` — or the other way round — and the cookie is not there.
@@ -367,7 +367,7 @@ The fix is always the same three things, in this order:
    `/api/oauth/microsoft/callback`) with the provider.
 3. Reach the instance under it.
 
-With a public base URL set, salt.md helps: starting a sign-in from any other
+With a public base URL set, dworkspace helps: starting a sign-in from any other
 address sends the browser to the canonical one first, so the round trip runs
 where the registration says it does.
 

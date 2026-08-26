@@ -275,7 +275,7 @@ something the blueprint does not contain.
 
 ### What the built-in blueprints contain
 
-They ship inside the salt.md binary, so a fresh install has them with no network
+They ship inside the dworkspace binary, so a fresh install has them with no network
 and no account. None of them contains a single row. The view names below are the
 chips you see on the card's detail view; what each one is grouped or dated by is
 in brackets.

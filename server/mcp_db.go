@@ -1,14 +1,14 @@
 package server
 
 import (
-	"strings"
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // Database-oriented MCP tools (Welle 9): they let an agent actually operate a
-// salt.md database — inspect its schema, query rows, write typed properties,
+// dworkspace database — inspect its schema, query rows, write typed properties,
 // create a database, move pages, and resolve people. All go through the same
 // workspace/ACL guards as the REST UI (checked by the caller in mcpCall).
 

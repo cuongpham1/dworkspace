@@ -10,10 +10,10 @@ import { BlockNoteView } from '@blocknote/mantine';
 import { api } from '../api';
 import { toast } from '../toast';
 import type { Backlink, CollectionConfig, Page, PageMeta, PropOption, User } from '../types';
-import { SaltProvider } from '../collab';
+import { DworkspaceProvider } from '../collab';
 import { plural, t } from '../i18n';
 import PropertyValue from './PropertyValue';
-import { saltSchema } from '../pageLink';
+import { dworkspaceSchema } from '../pageLink';
 import IconPicker from './IconPicker';
 import { PageIcon } from '../pageIcon';
 import { BlockContext } from '../blockContext';
@@ -26,6 +26,7 @@ import CommentsPanel, {
   setCommentsPanelOpen,
 } from './CommentsPanel';
 import NoteTrail from './NoteTrail';
+import NotificationBell from './NotificationBell';
 import { FilePreview, isPreviewable } from './FilePreview';
 import StructurePanel, { structurePanelOpen, setStructurePanelOpen } from './StructurePanel';
 import { AgentPresence } from './AgentBadge';
@@ -743,6 +744,7 @@ function PageHeader({
             {openComments > 0 && <span className="badge-count">{openComments}</span>}
           </button>
           )}
+          <NotificationBell onNavigate={onNavigate} />
           <button
             className={'icon-btn' + (structureOpen ? ' active-star' : '')}
             title={structureOpen ? t('Hide structure') : t('Show structure')}
@@ -1279,7 +1281,7 @@ interface CollabProps {
 
 function CollabEditor({ page, user, theme, canEdit, onReset, ...rest }: CollabProps) {
   const [ready, setReady] = useState(false);
-  const [provider, setProvider] = useState<SaltProvider | null>(null);
+  const [provider, setProvider] = useState<DworkspaceProvider | null>(null);
   const seedRef = useRef<unknown[] | null>(null);
 
   // The provider lives in the effect, not in the render. The earlier useMemo
@@ -1289,7 +1291,7 @@ function CollabEditor({ page, user, theme, canEdit, onReset, ...rest }: CollabPr
   // destroyed the committed provider for good — dev hung on a dead Y.Doc.
   // Here, setup→cleanup→setup simply produces a second provider.
   useEffect(() => {
-    const p = new SaltProvider(
+    const p = new DworkspaceProvider(
       page.id,
       (isNew) => {
         // Seed a brand-new CRDT doc from the page's stored content once.
@@ -1383,7 +1385,7 @@ function BlockContent({
   onPagesChanged,
   structureOpen,
 }: {
-  provider: SaltProvider;
+  provider: DworkspaceProvider;
   pageId: string;
   seed: unknown[] | null;
   hadContent: boolean;
@@ -1398,7 +1400,7 @@ function BlockContent({
   onPagesChanged: () => void;
 }) {
   const editor = useCreateBlockNote({
-    schema: saltSchema,
+    schema: dworkspaceSchema,
     collaboration: {
       provider,
       fragment: provider.doc.getXmlFragment('blocknote'),
@@ -1415,6 +1417,26 @@ function BlockContent({
   });
 
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+
+  // Workspace members, for the "@" mention menu. Fetched once per workspace
+  // (not per keystroke) and filtered client-side as the user types.
+  const workspaceId = pagesById.get(pageId)?.workspaceId;
+  const [members, setMembers] = useState<
+    { userId: string; name: string; email: string; color: string; avatar: string }[]
+  >([]);
+  useEffect(() => {
+    if (!workspaceId) return;
+    let alive = true;
+    api
+      .listMembers(workspaceId)
+      .then((m) => {
+        if (alive) setMembers(m);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [workspaceId]);
 
   // Slash menu: default items + column layout + our custom blocks.
   const getSlashItems = async (query: string) => {
@@ -1522,7 +1544,7 @@ function BlockContent({
               ' ',
             ]);
           } catch (e) {
-            console.error('salt.md: failed to create page from mention', e);
+            console.error('dworkspace: failed to create page from mention', e);
           }
         },
       });
@@ -1530,7 +1552,49 @@ function BlockContent({
     return items;
   };
 
-  const getMentionItems = (query: string) => buildLinkItems(query);
+  // People, for the "@" trigger specifically — pages get their own trigger
+  // ("[["), so this is the one place a person and a page can both turn up in
+  // the same menu. People sort first: naming someone is usually why "@" was
+  // typed at all.
+  const buildPersonItems = (query: string) => {
+    const q = query.toLowerCase();
+    return members
+      .filter((m) => m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))
+      .slice(0, 8)
+      .map((m) => ({
+        title: m.name,
+        subtext: m.email,
+        icon: m.avatar ? (
+          <img src={m.avatar} alt="" style={{ width: 18, height: 18, borderRadius: '50%' }} />
+        ) : (
+          <span
+            style={{
+              display: 'inline-flex',
+              width: 18,
+              height: 18,
+              borderRadius: '50%',
+              background: m.color || 'var(--accent)',
+              color: '#fff',
+              fontSize: 10,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {initials(m.name)}
+          </span>
+        ),
+        onItemClick: () =>
+          editor.insertInlineContent([
+            { type: 'mention', props: { userId: m.userId, label: m.name, color: m.color } },
+            ' ',
+          ]),
+      }));
+  };
+
+  const getMentionItems = async (query: string) => [
+    ...buildPersonItems(query),
+    ...(await buildLinkItems(query)),
+  ];
   // Wiki-links: the trigger is "[" (BlockNote uses single-char triggers), so the
   // text after it starts with a second "[" when the user types "[[". We strip
   // stray brackets ("[[Page]]") before matching.
@@ -1551,7 +1615,7 @@ function BlockContent({
         editor.replaceBlocks(editor.document, seed as never);
       } catch (e) {
         seedFailed.current = true;
-        console.error('salt.md: failed to seed page content', e);
+        console.error('dworkspace: failed to seed page content', e);
       }
     }
   }, [editor, provider, seed]);
@@ -1598,7 +1662,7 @@ function BlockContent({
   }, [editor, provider, hadContent]);
 
   // A file block otherwise goes straight to the download folder — you cannot
-  // glance at an attachment without leaving Salt and coming back. Catching the
+  // glance at an attachment without leaving Dworkspace and coming back. Catching the
   // click in the CAPTURE phase is what makes this work without touching
   // BlockNote's own file block: React registers capture listeners on its root
   // container, so this runs before the event ever reaches the block's own

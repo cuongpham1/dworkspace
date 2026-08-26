@@ -58,7 +58,7 @@ func (rl *rateLimiter) evict() {
 }
 
 // trashRetentionDays returns how long trashed pages are kept before automatic
-// permanent deletion. Admin setting > SALT_TRASH_DAYS env > 30-day default;
+// permanent deletion. Admin setting > DWORKSPACE_TRASH_DAYS env > 30-day default;
 // 0 disables auto-purge.
 func (s *Server) trashRetentionDays() int {
 	if v := s.setting("trash_days", ""); v != "" {
@@ -124,9 +124,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "ok", "version": Version})
 }
 
-// Env reads an environment variable under its SALT_ name.
+// Env reads an environment variable under its DWORKSPACE_ name.
 func Env(name string) string {
-	return os.Getenv("SALT_" + name)
+	return os.Getenv("DWORKSPACE_" + name)
 }
 
 // EnvOr is Env with a default.

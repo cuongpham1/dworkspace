@@ -211,12 +211,12 @@ func TestStripRowPreambleBlocks(t *testing.T) {
 }
 
 // TestImportRealNotionZip runs the importer against the user's actual export
-// when SALT_TEST_ZIP points at it. Skipped otherwise so the suite stays
+// when DWORKSPACE_TEST_ZIP points at it. Skipped otherwise so the suite stays
 // self-contained.
 func TestImportRealNotionZip(t *testing.T) {
-	path := os.Getenv("SALT_TEST_ZIP")
+	path := os.Getenv("DWORKSPACE_TEST_ZIP")
 	if path == "" {
-		t.Skip("set SALT_TEST_ZIP to the real Notion export to run this")
+		t.Skip("set DWORKSPACE_TEST_ZIP to the real Notion export to run this")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

@@ -14,7 +14,7 @@ import (
 // Signing in to the desktop app through the real browser.
 //
 // The whole design rests on one claim: the code that travels back over
-// salt:// is worthless to anybody who did not start the flow. A custom
+// dworkspace:// is worthless to anybody who did not start the flow. A custom
 // protocol is not a private channel — any program on the machine may register
 // for it — so that claim is what stands between "signed in" and "somebody
 // else's program is signed in as you".
@@ -38,13 +38,13 @@ func approveDesktop(t *testing.T, s *Server, cookie, challenge string) string {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("approve: %d %s", rec.Code, rec.Body.String())
 	}
-	// The code travels in the salt:// link on the page.
+	// The code travels in the dworkspace:// link on the page.
 	body := rec.Body.String()
-	i := strings.Index(body, "salt://auth?code=")
+	i := strings.Index(body, "dworkspace://auth?code=")
 	if i < 0 {
 		t.Fatalf("no hand-back link in the page: %s", body)
 	}
-	rest := body[i+len("salt://auth?code="):]
+	rest := body[i+len("dworkspace://auth?code="):]
 	end := strings.IndexAny(rest, `"'`)
 	if end < 0 {
 		t.Fatal("malformed hand-back link")
@@ -70,7 +70,7 @@ func TestTheDesktopCodeIsUselessWithoutTheVerifier(t *testing.T) {
 	verifier := "the-app-keeps-this-and-never-sends-it"
 	code := approveDesktop(t, s, cookie, desktopChallengeFor(verifier))
 
-	// Somebody else's program registered for salt:// and grabbed the code.
+	// Somebody else's program registered for dworkspace:// and grabbed the code.
 	// It has no verifier, so it guesses.
 	for _, guess := range []string{"", "wrong", verifier + "x", "the-app-keeps-this-and-never-sends-i"} {
 		if rec := exchangeDesktop(t, s, code, guess); rec.Code == http.StatusOK {
@@ -117,7 +117,7 @@ func TestAFailedExchangeStillBurnsTheCode(t *testing.T) {
 
 // The approval page is the gate against login-CSRF: without it any page you
 // open could send your browser through this flow and mint a session for a
-// program waiting on salt://.
+// program waiting on dworkspace://.
 func TestMintingACodeNeedsAPersonAndAPost(t *testing.T) {
 	s := testServer(t)
 	_, cookie := signedIn(t, s, "csrf@example.test")
@@ -128,7 +128,7 @@ func TestMintingACodeNeedsAPersonAndAPost(t *testing.T) {
 	r.Header.Set("Cookie", cookie)
 	rec := httptest.NewRecorder()
 	s.ServeHTTP(rec, r)
-	if strings.Contains(rec.Body.String(), "salt://auth?code=") {
+	if strings.Contains(rec.Body.String(), "dworkspace://auth?code=") {
 		t.Fatal("a GET minted a sign-in code")
 	}
 
@@ -138,7 +138,7 @@ func TestMintingACodeNeedsAPersonAndAPost(t *testing.T) {
 	r2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec2 := httptest.NewRecorder()
 	s.ServeHTTP(rec2, r2)
-	if strings.Contains(rec2.Body.String(), "salt://auth?code=") {
+	if strings.Contains(rec2.Body.String(), "dworkspace://auth?code=") {
 		t.Fatal("an anonymous POST minted a sign-in code")
 	}
 }

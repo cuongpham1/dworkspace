@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"strings"
+	"unicode"
 )
 
 // i18n-ok-file: the German IS the subject here — this file implements folding
@@ -97,9 +98,32 @@ func stemLite(w string) string {
 //
 // The words stay AND-joined among themselves: whoever types two terms means
 // both.
+// indexable reports whether a word contains anything the tokenizer will keep.
+//
+// unicode61 treats letters and digits as token characters and EVERYTHING else
+// as a separator. So a word made only of punctuation ("-", "/", "—") tokenizes
+// to nothing, and `"-"*` becomes a legal but EMPTY phrase — which FTS5 then
+// AND-s into the expression and matches nothing at all. One stray dash zeroed
+// the whole query: `OMS - Trade` returned nothing while `OMS Trade` returned
+// four pages, and copy-pasting a title (they are full of " - ") is the most
+// ordinary thing a reader does.
+func indexable(w string) bool {
+	for _, r := range w {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return true
+		}
+	}
+	return false
+}
+
 func ftsMatch(q string) string {
 	var groups []string
 	for _, raw := range strings.Fields(foldQuery(q)) {
+		// Dropped, not kept as an empty phrase: a separator carries no search
+		// intent, and AND-ing it in destroys the terms that do.
+		if !indexable(raw) {
+			continue
+		}
 		seen := map[string]bool{}
 		var alts []string
 		add := func(t string) {
@@ -126,7 +150,17 @@ func ftsMatch(q string) string {
 			groups = append(groups, "("+strings.Join(alts, " OR ")+")")
 		}
 	}
-	return strings.Join(groups, " ")
+	// Explicit "AND", not a bare space: FTS5's implicit-AND juxtaposition only
+	// parses between two bare terms. The instant one word needs an OR-group
+	// (its own stem/ß variant, added above), joining that group to a
+	// neighbouring term with just whitespace is a syntax error — verified
+	// against the live index, e.g. `("message"* OR "messag"*) "payload"*`
+	// fails to parse while `("message"* OR "messag"*) AND "payload"*` runs
+	// fine. Any multi-word query where at least one word is 6+ letters (stem
+	// kicks in) or contains "ss"/"ß" hit this and silently produced zero
+	// results — both searchChunks and its whole-page fallback share this same
+	// match string, so there was no working fallback either.
+	return strings.Join(groups, " AND ")
 }
 
 // migrateSearchIndex rebuilds the full-text index when it comes from an older

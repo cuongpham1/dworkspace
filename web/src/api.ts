@@ -9,7 +9,7 @@ import type {
   Page,
   PageMeta,
   PublicFormConfig,
-  SaltFile,
+  DworkspaceFile,
   SearchResult,
   UpdateInfo,
   User,
@@ -68,7 +68,7 @@ async function toApiError(res: Response, fallback: string): Promise<ApiError> {
  *  reason is needed (2FA required vs. wrong password). */
 function throwApiError(url: string, err: ApiError): never {
   if (err.status === 401 && !/^\/api\/(login|signup|setup)\b/.test(url)) {
-    window.dispatchEvent(new Event('salt:unauthorized'));
+    window.dispatchEvent(new Event('dworkspace:unauthorized'));
     throw new ApiError('unauthorized', 401, 'session_expired');
   }
   throw err;
@@ -543,9 +543,29 @@ export const api = {
     req<{ ok: boolean }>(`/api/workspaces/${id}/rules-proposal`, { method: 'DELETE' }),
   // The file index: a whole workspace, or everything below one page.
   listFiles: (scope: { workspace?: string; under?: string }) =>
-    req<SaltFile[]>(
+    req<DworkspaceFile[]>(
       '/api/files?' + new URLSearchParams(scope as Record<string, string>).toString(),
     ),
+  // Mentions of the signed-in account. There is no parameter for "whose" —
+  // the server answers for the caller and nobody else.
+  notifications: () =>
+    req<
+      {
+        pageId: string;
+        // The block the "@" sits in, so opening it can jump to the line rather
+        // than the top of the page. Empty when the mention predates that field.
+        blockId: string;
+        title: string;
+        icon: string;
+        at: string;
+        seen: boolean;
+      }[]
+    >('/api/notifications'),
+  markNotificationsRead: (pageId?: string) =>
+    req<{ ok: boolean }>('/api/notifications/read', {
+      method: 'POST',
+      body: JSON.stringify(pageId ? { pageId } : {}),
+    }),
   addWorkspaceMember: (workspaceId: string, email: string, role: 'admin' | 'member' | 'viewer') =>
     req<{ ok: boolean }>(`/api/workspaces/${workspaceId}/members`, {
       method: 'POST',
@@ -631,7 +651,7 @@ export const api = {
 
   // XHR-based so we can drive a global progress bar and give a precise
   // over-limit / server error message. Progress is broadcast on
-  // "salt:upload-progress" (0-1) and "salt:upload-done".
+  // "dworkspace:upload-progress" (0-1) and "dworkspace:upload-done".
   upload: (file: File, pageId?: string): Promise<string> =>
     new Promise((resolve, reject) => {
       if (file.size > api.uploadMaxBytes) {
@@ -648,12 +668,12 @@ export const api = {
       fd.append('file', file);
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `/api/upload${pageId ? `?page=${pageId}` : ''}`);
-      const emit = (p: number) => window.dispatchEvent(new CustomEvent('salt:upload-progress', { detail: p }));
+      const emit = (p: number) => window.dispatchEvent(new CustomEvent('dworkspace:upload-progress', { detail: p }));
       emit(0);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) emit(e.loaded / e.total);
       };
-      const finish = () => window.dispatchEvent(new Event('salt:upload-done'));
+      const finish = () => window.dispatchEvent(new Event('dworkspace:upload-done'));
       xhr.onload = () => {
         finish();
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -668,7 +688,7 @@ export const api = {
         // sign-in screen instead of landing as text in the editor while the
         // interface goes on pretending you are signed in.
         if (xhr.status === 401) {
-          window.dispatchEvent(new Event('salt:unauthorized'));
+          window.dispatchEvent(new Event('dworkspace:unauthorized'));
           return reject(new ApiError('unauthorized', 401, 'session_expired'));
         }
         let msg = xhr.status === 413 ? t('The file is too large for this instance.') : t('Upload failed');

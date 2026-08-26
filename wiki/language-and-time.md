@@ -1,6 +1,6 @@
 # Language and time
 
-salt.md speaks the language your browser asks for and writes dates the way your
+dworkspace speaks the language your browser asks for and writes dates the way your
 region writes them, without anybody configuring anything. This page is about the
 five settings that exist for when that guess is wrong — a laptop your employer
 set to the wrong continent, a language you read but do not want your dates in —
@@ -62,7 +62,7 @@ Two languages ship today: **English** and **Deutsch**. English is the source
 language of the product, so English is never a translation and never has gaps.
 
 Automatic walks your browser's list of preferred languages and takes the first
-one salt.md has a catalogue for; if there is none, English. That is why a German
+one dworkspace has a catalogue for; if there is none, English. That is why a German
 browser gets a German interface on the very first visit, with nobody having
 chosen anything.
 
@@ -88,13 +88,13 @@ The list covers `de-DE`, `de-AT`, `de-CH`, `en-GB`, `en-US`, `en-IE`, `en-AU`,
 `en-CA`, `fr-FR`, `fr-CH`, `it-IT`, `es-ES`, `nl-NL`, `pl-PL`, `pt-BR`, `sv-SE`,
 `da-DK` and `cs-CZ`.
 
-This is deliberately a **separate** setting from the language. salt.md ships one
+This is deliberately a **separate** setting from the language. dworkspace ships one
 catalogue per language, not per country — writing British and American copies of
 the same sentences would be maintenance for nothing — but dates and numbers
 really are regional. A bare "English" means American to a browser, so an
 English-reading user in Dublin or Sydney would get 07/18/2026 instead of
 18/07/2026, and an Austrian groups thousands differently from a German. Left on
-automatic, salt.md formats with whichever regional variant of your language your
+automatic, dworkspace formats with whichever regional variant of your language your
 browser already asked for: your operating system settled that question long ago
 and got it right.
 
@@ -135,7 +135,7 @@ The zone changes **timestamps only** — see the next section, which is the whol
 point of this page.
 
 If a stored zone is one your browser cannot use, timestamps fall back to your
-machine's own zone rather than disappearing. salt.md's server checks the shape of
+machine's own zone rather than disappearing. dworkspace's server checks the shape of
 a zone name but not its existence: the server binary carries no time-zone
 database at all, so the browser is the authority on which zones are real.
 
@@ -158,7 +158,7 @@ day and no weekday headings, so there is nothing there for this setting to move.
 This is the rule worth understanding, because getting it wrong is how a contract
 expires a day early.
 
-salt.md keeps two different things that both look like dates:
+dworkspace keeps two different things that both look like dates:
 
 **A moment** is an instant on the world clock: when a page was last edited, when
 a comment was written, when a file was uploaded, when a revision was saved. It is
@@ -215,7 +215,7 @@ bug nobody notices in the office where it was written.
 
 One small asymmetry to expect: when you *edit* a date property, the little date
 picker is your browser's own control, so its layout follows your operating
-system. The value you read afterwards is rendered by salt.md and follows the
+system. The value you read afterwards is rendered by dworkspace and follows the
 format setting.
 
 ## Automatic is a real state
@@ -226,7 +226,7 @@ and no difference between an account that has never opened this dialog and one
 that has set every field back to Automatic. You can return any single setting to
 Automatic at any time without touching the others.
 
-If you submit a value salt.md cannot use — a malformed zone name, a clock that is
+If you submit a value dworkspace cannot use — a malformed zone name, a clock that is
 neither 12 nor 24 — that one field is stored as automatic and the others are
 kept. The dialog then shows what was actually stored rather than what was asked
 for, so you are never left believing a setting took that did not.
@@ -241,7 +241,7 @@ after a reload is already in the right language instead of flashing English, and
 it means the sign-in screen comes up the way you last had it — before sign-in
 there is no account to ask. The copy is never the source of truth; the moment you
 sign in, the account's settings win. If you had chosen a language in an early
-version of salt.md, that choice is carried over rather than reset.
+version of dworkspace, that choice is carried over rather than reset.
 
 **Nobody can change them for you.** They are written through an endpoint of their
 own, `/api/me/prefs`, which identifies the account by the signed-in session and
@@ -256,7 +256,7 @@ a new account starts on automatic.
 
 ## What the settings do not reach
 
-- **Email that salt.md sends is English.** An invitation goes to somebody who has
+- **Email that dworkspace sends is English.** An invitation goes to somebody who has
   no account yet, so the server has no way of knowing what language they read.
   See [Mail](mail.md).
 - **A page you share publicly is English for everyone.** The password prompt, the
@@ -267,7 +267,7 @@ a new account starts on automatic.
 - **The calendar feed you subscribe to** carries dates as dates: a date property
   with no time becomes an all-day entry, which your calendar app then displays in
   its own way. A date that carries a time becomes a timed entry with no zone
-  attached, so the calendar app reads 14:30 as 14:30 wherever it is. Your salt.md
+  attached, so the calendar app reads 14:30 as 14:30 wherever it is. Your dworkspace
   zone setting has no effect on the feed.
 - **[Search](search.md) folds and stems the same way for everybody.** Umlauts and
   accents are folded before indexing, and a handful of German endings are trimmed
@@ -288,7 +288,7 @@ a new account starts on automatic.
 A language is one JSON file in the source tree plus one line in the language
 list, and there is a script that does the tedious part. This is work in the
 source: catalogues are compiled into the frontend, so a new language means
-rebuilding salt.md, not dropping a file onto a running server. See
+rebuilding dworkspace, not dropping a file onto a running server. See
 [Self-hosting](self-hosting.md).
 
 From the `web` directory:

@@ -15,7 +15,7 @@ import (
 // it reaches for the wrong item. Bundling by OBJECT rather than by verb is the
 // rule the whole consolidation follows; this is the biggest single case of it.
 //
-// What it is NOT is a step towards one salt(action, …) tool. That would take
+// What it is NOT is a step towards one dworkspace(action, …) tool. That would take
 // the saving too far: the schema stops describing anything and the description
 // stops helping. A tool should still be able to say what it does in a sentence.
 

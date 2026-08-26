@@ -1,7 +1,7 @@
 # History and audit
 
-salt.md keeps four separate records, and they answer four different questions.
-Reaching for the wrong one is the usual reason somebody concludes that salt.md
+dworkspace keeps four separate records, and they answer four different questions.
+Reaching for the wrong one is the usual reason somebody concludes that dworkspace
 does not remember something it remembers perfectly well. This page says what
 each record contains, who may read it, how long it survives, and how to put an
 old version of a page back.
@@ -44,7 +44,7 @@ covered by page history instead, and the two are separate.
 ## Version history
 
 A revision is a whole copy of the page's **title and body** at one moment, not a
-diff. salt.md writes one whenever a page's body is written: your own editing
+diff. dworkspace writes one whenever a page's body is written: your own editing
 saved from the browser, a write over the API, or an agent writing over MCP.
 
 **Which moment gets recorded differs by route**, and it decides what *Restore*
@@ -81,7 +81,7 @@ properties are.
 2. Choose **Version history**.
 3. The dialog lists every kept revision, newest first: the time it was taken,
    who wrote it, and a **Restore** button.
-4. Click **Restore**. salt.md asks first: *Restore the version from …? The
+4. Click **Restore**. dworkspace asks first: *Restore the version from …? The
    current state is saved as a version first.*
 5. On success a *Version restored* message appears, the dialog closes, and the
    live document is reset — anybody with that page open in an editor gets the
@@ -117,7 +117,7 @@ and its revisions go together. That period is a setting, not a fixture: *Instanc
 settings* → *Empty the trash automatically after (days, 0 = never)*, 30 days
 unless an admin changes it, and **0 turns the automatic emptying off entirely**,
 which makes revisions survive until somebody deletes the page for good.
-Self-hosters can set the same number with `SALT_TRASH_DAYS`, and the admin
+Self-hosters can set the same number with `DWORKSPACE_TRASH_DAYS`, and the admin
 setting wins over it. See [Trash and recovery](trash-and-recovery.md) and
 [Administration](administration.md).
 
@@ -247,11 +247,11 @@ deletions would be the first thing to vanish from the record.
 
 The instance owner can look into a workspace they are not a member of. There is
 no way to make that impossible — whoever runs the server has the database file —
-so salt.md makes it deliberate and **visible** instead.
+so dworkspace makes it deliberate and **visible** instead.
 
 **Taking it.** In *Manage users*, the owner opens their own account, finds a
 workspace they have no access to under *Workspace access*, and clicks **Emergency
-access**. salt.md asks *Emergency access to “…” — why?* and will not proceed on
+access**. dworkspace asks *Emergency access to “…” — why?* and will not proceed on
 less than 10 characters of reason. The reason is stored (up to 500 characters),
 written to the activity log, and emailed to that workspace's admins. The
 confirmation names the end time: *Read access to “…” until … — the people in
@@ -308,7 +308,7 @@ The visibility is the safeguard, not the permission.
 ## Rejected sign-ins
 
 The fourth record does not live in the database and is not reachable from the
-interface. salt.md writes **one line to its own log for a rejected sign-in
+interface. dworkspace writes **one line to its own log for a rejected sign-in
 password and for a rejected API token**:
 
 ```
@@ -329,7 +329,7 @@ in backups, and "who did what" belongs in the activity log behind a sign-in.
 A wrong **second factor** is not one of these lines either — the password was
 right, and that attempt is throttled but not written.
 
-salt.md throttles by itself as well: 30 sign-in attempts a minute per address,
+dworkspace throttles by itself as well: 30 sign-in attempts a minute per address,
 and a separate budget for rejected API tokens that only failures pay into, so an
 agent working with a valid token is never slowed by it. The log line exists for
 the layer above that — a firewall ban costs an attacker a TCP connection instead
@@ -385,7 +385,7 @@ entries went, rather than leaving you to check again tomorrow.
 Two consequences worth knowing before you shorten it:
 
 - **Taking a change back stops working once its entry is gone.** The before/after
-  values live in the entry, and nothing else in salt.md remembers them.
+  values live in the entry, and nothing else in dworkspace remembers them.
 - **Nothing warns you.** The entries are deleted, not archived, and no backup is
   taken first. Download a backup if the record matters to you.
 
@@ -397,7 +397,7 @@ because people trust it — so the shortening has to be somebody's decision.
 The notes on a page cannot be edited or removed one by one — that is what makes
 them worth reading later, and the panel says so. They can be discarded **all at
 once**, by anybody with write access to the page: open the trail and click
-**Discard the whole trail**. salt.md asks first, the notes are gone afterwards,
+**Discard the whole trail**. dworkspace asks first, the notes are gone afterwards,
 and there is no undo.
 
 The act itself is recorded in the activity log, with the number of notes removed
@@ -414,9 +414,9 @@ most** — a larger or malformed value falls back to 50 rather than erroring, wh
 is easy to miss when paging the log out of the instance. The version history of
 one page is readable per page over the API and over MCP.
 
-For a live feed rather than a poll, use a [webhook](webhooks.md). salt.md
+For a live feed rather than a poll, use a [webhook](webhooks.md). dworkspace
 delivers `page.created`, `page.updated` and `page.trashed` to a URL you give it,
-each signed with an `X-Salt-Signature` header. A `page.updated` fires on any save
+each signed with an `X-Dworkspace-Signature` header. A `page.updated` fires on any save
 that changed the body or the metadata, whether it came from the browser, the API
 or an agent — that is the built-in way to feed page changes into a SIEM or
 another system as they happen. The payload names the page and never carries its
@@ -426,5 +426,5 @@ For everything else — keeping the trail after the instance is gone, running yo
 own queries over it — take the database. It is one SQLite file, and the
 revisions, the log and the emergency grants are ordinary tables in it. An admin
 can download the whole instance from *Instance settings* → **Download backup
-(.tar.gz)** without shell access; that file is what `./salt restore` reads back.
+(.tar.gz)** without shell access; that file is what `./dworkspace restore` reads back.
 See [Self-hosting](self-hosting.md) and [Administration](administration.md).

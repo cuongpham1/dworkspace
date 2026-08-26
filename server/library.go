@@ -121,7 +121,7 @@ func loadLibrary() ([]libraryEntry, map[string]libraryEntry) {
 // can only ever show what is actually in there.
 func describeBlueprint(fsys fs.FS, e *libraryEntry) bool {
 	var manifest transferManifest
-	b, err := fs.ReadFile(fsys, "salt-workspace.json")
+	b, err := fs.ReadFile(fsys, "dworkspace-workspace.json")
 	if err != nil || json.Unmarshal(b, &manifest) != nil {
 		return false
 	}

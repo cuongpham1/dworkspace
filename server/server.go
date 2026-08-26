@@ -18,11 +18,11 @@ import (
 )
 
 type Server struct {
-	db          *sql.DB
-	mux         *http.ServeMux
-	dataDir     string
+	db      *sql.DB
+	mux     *http.ServeMux
+	dataDir string
 	// name → the markup INSIDE a Lucide <svg>, for the print view.
-	lucide      map[string]string
+	lucide map[string]string
 	// The third-party licence notices, embedded from the repository root.
 	notices     string
 	addr        string
@@ -63,7 +63,7 @@ func (s *Server) Close() error {
 }
 
 // DBFile is the name of the SQLite file.
-const DBFile = "salt.db"
+const DBFile = "dworkspace.db"
 
 func New(dataDir string, dist fs.FS) (*Server, error) {
 	if err := os.MkdirAll(filepath.Join(dataDir, "files"), 0o755); err != nil {
@@ -151,7 +151,7 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	m.HandleFunc("POST /api/logout", s.handleLogout)
 	m.HandleFunc("POST /api/signup", s.handleSelfSignup)
 	m.HandleFunc("GET /api/signup-policy", s.handleSignupPolicy)
-	// salt.md AS an authorization server, so an agent can sign in instead of
+	// dworkspace AS an authorization server, so an agent can sign in instead of
 	// carrying a key that never dies (oauth_provider.go). Discovery is
 	// unauthenticated on purpose: it carries no data, only the addresses of the
 	// doors. Authorizing needs a browser SESSION — a token approving a grant
@@ -259,6 +259,11 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	m.HandleFunc("POST /api/favorites/{id}", s.auth(s.handleAddFavorite))
 	m.HandleFunc("DELETE /api/favorites/{id}", s.auth(s.handleRemoveFavorite))
 
+	// Being named with "@" on a page. Always scoped to the caller — there is no
+	// route to read anybody else's (see mentions.go).
+	m.HandleFunc("GET /api/notifications", s.auth(s.handleNotifications))
+	m.HandleFunc("POST /api/notifications/read", s.auth(s.handleNotificationsRead))
+
 	m.HandleFunc("GET /api/audit", s.auth(s.handleAudit))
 	m.HandleFunc("POST /api/audit/{id}/revert", s.auth(s.handleAuditRevert))
 	m.HandleFunc("GET /api/workspaces", s.auth(s.handleListWorkspaces))
@@ -335,7 +340,7 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	m.HandleFunc("/mcp", s.handleMCP)
 	// Token-in-URL variant: many MCP clients (claude.ai/Desktop connectors,
 	// ChatGPT developer mode, …) only accept a plain URL and offer no way to
-	// set an Authorization header — one link makes Salt work everywhere.
+	// set an Authorization header — one link makes Dworkspace work everywhere.
 	// Same trade-off as the ICS feed: the token rides in the URL.
 	m.HandleFunc("/mcp/{token}", s.handleMCP)
 

@@ -15,7 +15,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-const sessionCookie = "salt_session"
+const sessionCookie = "dworkspace_session"
 
 // sessionCookieValue returns the session value from the cookie.
 func sessionCookieValue(r *http.Request) (string, bool) {
@@ -406,7 +406,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 	orgID := s.defaultOrg()
 	if orgID == "" {
 		orgID = newID()
-		s.db.Exec(`INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)`, orgID, "salt.md", now())
+		s.db.Exec(`INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)`, orgID, "dworkspace", now())
 	}
 	s.db.Exec(`INSERT INTO org_members (org_id, user_id, role) VALUES (?, ?, ?) ON CONFLICT DO NOTHING`, orgID, id, roleOwner)
 	// Claim any orphaned pages (e.g. the seeded welcome page created before a
@@ -872,7 +872,7 @@ func (s *Server) handleCreateToken(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 500, err.Error())
 		return
 	}
-	token := "salt_" + hex.EncodeToString(b)
+	token := "dworkspace_" + hex.EncodeToString(b)
 	id := newID()
 	_, err := s.db.Exec(`INSERT INTO api_tokens (id, user_id, name, token_hash, scope, workspace_scope, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, userID, strings.TrimSpace(body.Name), tokenHash(token), scope, strings.Join(scoped, ","), now())

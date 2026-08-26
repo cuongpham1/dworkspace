@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
-import type { Backlink, PageMeta, SaltFile } from '../types';
+import type { Backlink, PageMeta, DworkspaceFile } from '../types';
 import { PageIcon } from '../pageIcon';
 import { FilePreview, isPreviewable } from './FilePreview';
 import { formatBytes } from '../format';
@@ -14,7 +14,7 @@ import { CornerDownRight, FileText, Link2, PanelRightClose, Table2 } from 'lucid
 // the body — but a reader had to hunt through the sidebar or scroll to the end
 // to find any of it. The panel is a view onto data that was already there.
 
-const PANEL_KEY = 'salt-structure-open';
+const PANEL_KEY = 'dworkspace-structure-open';
 
 export function structurePanelOpen(): boolean {
   return localStorage.getItem(PANEL_KEY) === '1';
@@ -110,7 +110,7 @@ export default function StructurePanel({
   onNavigate: (id: string | null) => void;
   onClose: () => void;
 }) {
-  const [files, setFiles] = useState<SaltFile[]>([]);
+  const [files, setFiles] = useState<DworkspaceFile[]>([]);
   const [links, setLinks] = useState<Backlink[]>([]);
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
 
@@ -132,7 +132,7 @@ export default function StructurePanel({
     };
   }, [pageId, pagesById]);
 
-  const openFile = (f: SaltFile) => {
+  const openFile = (f: DworkspaceFile) => {
     const url = '/files/' + f.name;
     if (isPreviewable(url)) setPreview({ name: f.displayName || f.name, url });
     else window.open(url, '_blank', 'noopener');

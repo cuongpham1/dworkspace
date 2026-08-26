@@ -4,7 +4,7 @@
 //
 // This is the only place in the desktop app that guesses. Everything else
 // either works or shows an error; this decides what somebody meant by
-// "salt.example.com" — and it is the first thing anybody does with the app, so
+// "dworkspace.example.com" — and it is the first thing anybody does with the app, so
 // a wrong guess is a first impression of "it does not work".
 //
 // The two cases worth the file: a scheme that is neither http nor https must be
@@ -23,15 +23,15 @@ const out = [];
 const check = (input, want) => out.push({ input, got: normalizeURL(input), want });
 
 // ---- what people type ----
-check('salt.example.com', 'https://salt.example.com');
-check('https://salt.example.com', 'https://salt.example.com');
-check('http://salt.example.com', 'http://salt.example.com');
-check('  salt.example.com  ', 'https://salt.example.com');
-check('salt.example.com/', 'https://salt.example.com');
-check('SALT.EXAMPLE.COM', 'https://salt.example.com');
+check('dworkspace.example.com', 'https://dworkspace.example.com');
+check('https://dworkspace.example.com', 'https://dworkspace.example.com');
+check('http://dworkspace.example.com', 'http://dworkspace.example.com');
+check('  dworkspace.example.com  ', 'https://dworkspace.example.com');
+check('dworkspace.example.com/', 'https://dworkspace.example.com');
+check('DWORKSPACE.EXAMPLE.COM', 'https://dworkspace.example.com');
 
 // A pasted address carries the page somebody was looking at. Keep the origin.
-check('https://salt.example.com/p/9fd2?tab=x#top', 'https://salt.example.com');
+check('https://dworkspace.example.com/p/9fd2?tab=x#top', 'https://dworkspace.example.com');
 
 // ---- this machine: http, or the first attempt always fails ----
 check('localhost:8420', 'http://localhost:8420');

@@ -19,7 +19,7 @@ COPY wiki /src/wiki
 COPY server /src/server
 # Same VERSION the backend is stamped with, so the two never disagree and the
 # "reload" banner only fires after an actual deploy.
-RUN SALT_VERSION=${VERSION} npm run build
+RUN DWORKSPACE_VERSION=${VERSION} npm run build
 
 # --- Backend build (cross-compiled to the requested target arch) ---
 FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS build
@@ -34,14 +34,14 @@ COPY --from=web /src/web/dist ./web/dist
 # CGO off + pure-Go SQLite ⇒ a fully static binary, and building on the native
 # builder while targeting $TARGETARCH avoids slow QEMU emulation of the compiler.
 RUN go mod tidy && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags="-s -w -X salt/server.Version=${VERSION}" -o /salt .
+    go build -trimpath -ldflags="-s -w -X dworkspace/server.Version=${VERSION}" -o /dworkspace .
 
 # --- Runtime ---
 FROM alpine:3.20
-RUN adduser -D -H salt && mkdir -p /data && chown salt /data
-USER salt
-ENV SALT_ADDR=:8420 SALT_DATA=/data
+RUN adduser -D -H dworkspace && mkdir -p /data && chown dworkspace /data
+USER dworkspace
+ENV DWORKSPACE_ADDR=:8420 DWORKSPACE_DATA=/data
 VOLUME /data
 EXPOSE 8420
-COPY --from=build /salt /usr/local/bin/salt
-ENTRYPOINT ["salt"]
+COPY --from=build /dworkspace /usr/local/bin/dworkspace
+ENTRYPOINT ["dworkspace"]

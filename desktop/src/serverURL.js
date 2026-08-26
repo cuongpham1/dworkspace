@@ -4,12 +4,12 @@
 // Electron — and it is the one piece of this app that GUESSES. Everything else
 // either works or shows an error; this decides what somebody meant.
 //
-// The guess that matters: a bare "salt.example.com" becomes **https**. An
+// The guess that matters: a bare "dworkspace.example.com" becomes **https**. An
 // instance on the internet without TLS is a mistake, and one on localhost is
 // typed with its port anyway, where the explicit http:// is natural.
 
 /** Hosts that mean "this machine", where http is the honest default: a local
- *  salt.md serves plain HTTP unless somebody deliberately gave it a
+ *  dworkspace serves plain HTTP unless somebody deliberately gave it a
  *  certificate, so defaulting to https here fails every first attempt. */
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(:|$)/i;
 

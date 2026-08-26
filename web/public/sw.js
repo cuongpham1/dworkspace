@@ -1,4 +1,4 @@
-/* salt.md service worker: app-shell caching only.
+/* dworkspace service worker: app-shell caching only.
  *
  * Strategy:
  *  - Hashed /assets/* → cache-first (immutable by construction).
@@ -8,7 +8,7 @@
  *    Caching API responses would serve stale user data; the CRDT and REST
  *    layers own their own consistency.
  */
-const SHELL = 'salt-shell-v1';
+const SHELL = 'dworkspace-shell-v1';
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();

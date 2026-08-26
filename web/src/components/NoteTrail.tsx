@@ -55,8 +55,8 @@ export default function NoteTrail({ pageId, canWrite }: { pageId: string; canWri
     const onNotes = (e: Event) => {
       if ((e as CustomEvent<string>).detail === pageId) load();
     };
-    window.addEventListener('salt:notes', onNotes);
-    return () => window.removeEventListener('salt:notes', onNotes);
+    window.addEventListener('dworkspace:notes', onNotes);
+    return () => window.removeEventListener('dworkspace:notes', onNotes);
   }, [pageId, load]);
 
   useEffect(() => {

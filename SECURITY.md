@@ -2,11 +2,11 @@
 
 ## Reporting a vulnerability
 
-Write to **dev@salt.md**, or open a private advisory through GitHub's
+Write to **dev@dworkspace**, or open a private advisory through GitHub's
 [report a vulnerability](https://github.com/saltmd/salt.md/security/advisories/new)
 form. Please do not open a public issue for a security problem.
 
-You will get an acknowledgement within 72 hours. salt.md is maintained by one
+You will get an acknowledgement within 72 hours. dworkspace is maintained by one
 person, so a fix takes as long as it takes. You will be told what is happening
 rather than left in silence. There is no bounty programme.
 
@@ -19,7 +19,7 @@ The server, the frontend, the MCP surface, the desktop application, and the
 install script in this repository.
 
 Out of scope: an instance somebody else runs, and how they have configured it.
-If you found something on a salt.md instance that is not ours, tell its
+If you found something on a dworkspace instance that is not ours, tell its
 operator.
 
 ## What we ask
@@ -30,5 +30,5 @@ look.
 
 ## Supported versions
 
-The latest release. salt.md is early and moves quickly; there are no long-term
+The latest release. dworkspace is early and moves quickly; there are no long-term
 support branches yet.

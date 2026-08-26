@@ -3,8 +3,8 @@ package server
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"html"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,7 +29,7 @@ import (
 // So: the app sends you to your browser, you sign in normally — password,
 // Microsoft, Google, all unchanged — and the browser hands control back.
 //
-// THE HAND-BACK IS THE WHOLE PROBLEM. A custom protocol (salt://) is not a
+// THE HAND-BACK IS THE WHOLE PROBLEM. A custom protocol (dworkspace://) is not a
 // private channel: any program on the machine may register for it, and the one
 // that answers is not necessarily ours. So the code that travels over it is
 // useless on its own.
@@ -40,21 +40,21 @@ import (
 //	 ├── opens /desktop/login?challenge ──────────────────────────────▶ remembers it
 //	 │                               │ sign in as usual               │
 //	 │                               │ "allow the desktop app?" ──────▶ mints a code
-//	 │◀──── salt://auth?code ────────┤                                │
+//	 │◀──── dworkspace://auth?code ────────┤                                │
 //	 ├── POST /api/desktop/exchange {code, verifier} ─────────────────▶ sha256(verifier) == challenge?
 //	 │◀──────────────── a session cookie ──────────────────────────────┤ single use, then gone
 //
 // Whoever intercepts the code does not have the verifier, which never leaves
-// the app. This is PKCE, and it is the same shape salt.md already uses for
+// the app. This is PKCE, and it is the same shape dworkspace already uses for
 // agents signing in over MCP.
 //
 // The confirmation step is not ceremony. Without it, ANY page you open could
 // send your browser to /desktop/login and silently mint a session for a program
-// waiting on salt:// — the classic login-CSRF, with a desktop app as the prize.
+// waiting on dworkspace:// — the classic login-CSRF, with a desktop app as the prize.
 
 const (
 	desktopCodeTTL   = 5 * time.Minute
-	desktopScheme    = "salt"
+	desktopScheme    = "dworkspace"
 	desktopChallenge = 43 // base64url of a 32-byte digest, unpadded
 )
 
@@ -64,7 +64,7 @@ func (s *Server) handleDesktopLogin(w http.ResponseWriter, r *http.Request) {
 	challenge := r.URL.Query().Get("challenge")
 	if !validChallenge(challenge) {
 		desktopPage(w, http.StatusBadRequest, "That sign-in request is malformed.",
-			"Start it again from the salt.md app.", "")
+			"Start it again from the dworkspace app.", "")
 		return
 	}
 	s.sweepDesktopPending()
@@ -116,7 +116,7 @@ func (s *Server) handleDesktopApprove(w http.ResponseWriter, r *http.Request) {
 	// that has never seen this scheme may refuse to redirect to it silently.
 	target := desktopScheme + "://auth?code=" + url.QueryEscape(code)
 	desktopPage(w, http.StatusOK, "Signed in.",
-		"You can close this tab and go back to the salt.md app.", target)
+		"You can close this tab and go back to the dworkspace app.", target)
 }
 
 // handleDesktopExchange turns the code plus the verifier into a session.
@@ -219,10 +219,10 @@ func desktopApprovalPage(w http.ResponseWriter, challenge, name, email string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>salt.md</title><style>%s</style></head><body><div class="c">
+<title>dworkspace</title><style>%s</style></head><body><div class="c">
 %s
 <h1>Sign in to the desktop app?</h1>
-<p>The salt.md app on this computer is asking for a session.</p>
+<p>The dworkspace app on this computer is asking for a session.</p>
 <div class="who">%s%s</div>
 <form method="POST" action="/desktop/approve">
 <input type="hidden" name="challenge" value="%s">
@@ -244,11 +244,11 @@ func desktopPage(w http.ResponseWriter, status int, title, detail, jump string) 
 	}
 	link := ""
 	if jump != "" {
-		link = fmt.Sprintf(`<a class="b" href="%s">Open salt.md</a>`, html.EscapeString(jump))
+		link = fmt.Sprintf(`<a class="b" href="%s">Open dworkspace</a>`, html.EscapeString(jump))
 	}
 	fmt.Fprintf(w, `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">%s
-<title>salt.md</title><style>%s</style></head><body><div class="c">
+<title>dworkspace</title><style>%s</style></head><body><div class="c">
 %s<h1>%s</h1><p>%s</p>%s</div></body></html>`,
 		body, desktopStyle, desktopMark, html.EscapeString(title), html.EscapeString(detail), link)
 }

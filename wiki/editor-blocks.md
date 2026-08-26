@@ -5,7 +5,7 @@ heading, a list item, a table, an image, a callout, a whole two-column layout.
 You reach every one of them the same three ways: the slash menu, a Markdown
 shortcut, or a keyboard shortcut. This page is the complete catalogue — what
 each block is, how to get it, what it does when you click it, and what happens
-to it when the page leaves salt.md as Markdown.
+to it when the page leaves dworkspace as Markdown.
 
 Everything here applies to **documents** and to **collection rows** (a row is a
 page with a body like any other). A collection page itself shows its table
@@ -34,7 +34,7 @@ mode because it is the one that cannot destroy what is already on the page, not
 because it spares open editors. See [Agents](agents.md).
 
 **The editor's own menus are English**, always, including on an instance running
-in another language. The four blocks salt.md adds itself are translated; the
+in another language. The four blocks dworkspace adds itself are translated; the
 menus that come with the editor — the slash menu's built-in entries, the block
 menu, the formatting toolbar — are not.
 
@@ -78,7 +78,7 @@ whether or not the menu is open — **except `Mod-Alt-c`**, which is printed
 beside **Code Block** but is bound to no key at all. One shortcut goes the other
 way and is advertised nowhere: `Mod-Alt-q` turns the current block into a quote.
 
-The six salt.md blocks carry a one-line description in the menu:
+The six dworkspace blocks carry a one-line description in the menu:
 
 - **Columns** — *Two blocks side by side*
 - **Diagram** — *A flow chart written as text*
@@ -95,7 +95,7 @@ block can be indented into it, so a column can hold more than one thing.
 It replaced a paid add-on. Two things it does not do, which that one did:
 dragging a block sideways to open a new column, and pulling the edges to change
 their widths. Both are worth having; neither was worth a component whose licence
-would have to be renegotiated the day any part of salt.md is closed.
+would have to be renegotiated the day any part of dworkspace is closed.
 
 **Diagram** is written, not drawn. The block holds
 [Mermaid](https://mermaid.js.org) source — `A --> B` rather than coordinates for
@@ -306,7 +306,7 @@ byte on this instance.
 name and the document opens full screen with its name, a **Download** button and
 **Close**; Escape closes it too. This only happens for PDFs that were uploaded
 to this instance — a file block pointing at somebody else's server keeps opening
-the ordinary way, because a foreign address is not something salt.md will frame.
+the ordinary way, because a foreign address is not something dworkspace will frame.
 Office formats are not previewed: no browser reads them without help, and the
 help costs either the single-binary install or the promise that a self-hosted
 instance keeps its documents to itself.
@@ -429,7 +429,7 @@ Copying goes the same way round. Blocks copied out of the editor land on the
 clipboard as **Markdown** in the plain-text flavour, so a block pasted into a
 chat window or a text editor arrives as Markdown rather than as a wall of
 run-together words. A second, private flavour travels alongside it, which is
-what makes a copy from one salt.md page into another lossless. Copying from
+what makes a copy from one dworkspace page into another lossless. Copying from
 inside a code block puts the raw code on the clipboard instead.
 
 ### The block's own Upload tab

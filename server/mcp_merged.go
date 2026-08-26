@@ -10,7 +10,7 @@ import (
 // catalogue entries for the same object, bundled by OBJECT rather than by verb.
 //
 // The rule that stops this going too far: a tool must still be able to say what
-// it does in one sentence. One salt(action, …) would save the most entries and
+// it does in one sentence. One dworkspace(action, …) would save the most entries and
 // help the least, because the schema would stop describing anything.
 //
 // The second rule: destroying stays standalone. delete_comment and delete_view

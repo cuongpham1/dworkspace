@@ -19,7 +19,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('salt.md UI error:', error, info.componentStack);
+    console.error('dworkspace UI error:', error, info.componentStack);
   }
 
   render() {

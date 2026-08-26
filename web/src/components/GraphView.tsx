@@ -25,7 +25,7 @@ const LINK_LEN = 130; // a mention may sit further away
 const DAMPING = 0.86;
 const CENTER_PULL = 0.004;
 
-// The salt palette, turned up. A graph is the one screen where punchy is
+// The dworkspace palette, turned up. A graph is the one screen where punchy is
 // correct: here the colour is doing work rather than decorating text somebody
 // has to read.
 //
@@ -36,7 +36,7 @@ const CENTER_PULL = 0.004;
 // gets its own colour inside one workspace, which is the grouping somebody
 // actually looks for.
 const HUES = [
-  '#2f9e5f', // salt green, the house colour, brightened
+  '#2f9e5f', // dworkspace green, the house colour, brightened
   '#3f86e0',
   '#e0a53b',
   '#9a5fd6',
