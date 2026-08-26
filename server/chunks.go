@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"strings"
 )
 
@@ -167,21 +169,14 @@ type pageChunkIndex struct {
 // own: page_chunks hangs off pages by foreign key, and chunks_fts is carried
 // along here (a virtual table knows no cascade).
 func (s *Server) reindexChunks(index pageChunkIndex) error {
+	if index.trashed {
+		return nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
-		(SELECT id FROM page_chunks WHERE page_id = ?)`, index.pageID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM page_chunks WHERE page_id = ?`, index.pageID); err != nil {
-		return err
-	}
-	if index.trashed {
-		return tx.Commit()
-	}
 	chunks := chunkContent(index.content)
 	descriptionText := strings.TrimSpace(index.description)
 	if descriptionText != "" {
@@ -191,19 +186,57 @@ func (s *Server) reindexChunks(index pageChunkIndex) error {
 		}
 		chunks = append([]pageChunk{{Ord: 0, Kind: chunkKindDescription, Text: descriptionText}}, chunks...)
 	}
-	if len(chunks) == 0 {
+	if len(chunks) == 0 && strings.TrimSpace(index.title) != "" {
 		// An empty page still gets one passage from its title, otherwise it
 		// disappears from the passage-based search.
-		if strings.TrimSpace(index.title) == "" {
-			return tx.Commit()
-		}
 		chunks = []pageChunk{{Ord: 0, Kind: chunkKindBody, Text: index.title}}
 	}
-	for _, c := range chunks {
-		id := newID()
-		if _, err := tx.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, kind, heading, text)
-			VALUES (?, ?, ?, ?, ?, ?, ?)`, id, index.pageID, index.workspaceID, c.Ord, c.Kind, c.Heading, c.Text); err != nil {
+	rows, err := tx.Query(`SELECT id, kind, text FROM page_chunks WHERE page_id = ? ORDER BY ord`, index.pageID)
+	if err != nil {
+		return err
+	}
+	type oldChunk struct{ id, kind, text string }
+	var old []oldChunk
+	for rows.Next() {
+		var c oldChunk
+		if err := rows.Scan(&c.id, &c.kind, &c.text); err != nil {
+			rows.Close()
 			return err
+		}
+		old = append(old, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if _, err := tx.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
+		(SELECT id FROM page_chunks WHERE page_id = ?)`, index.pageID); err != nil {
+		return err
+	}
+	reusable := map[string][]string{}
+	for _, c := range old {
+		key := c.kind + "\x00" + c.text
+		reusable[key] = append(reusable[key], c.id)
+	}
+	used := map[string]bool{}
+	for _, c := range chunks {
+		key := c.Kind + "\x00" + c.Text
+		id := ""
+		if ids := reusable[key]; len(ids) > 0 {
+			id = ids[0]
+			reusable[key] = ids[1:]
+			used[id] = true
+			if _, err := tx.Exec(`UPDATE page_chunks SET workspace_id = ?, ord = ?, heading = ? WHERE id = ?`,
+				index.workspaceID, c.Ord, c.Heading, id); err != nil {
+				return err
+			}
+		} else {
+			id = newID()
+			if _, err := tx.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, kind, heading, text)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`, id, index.pageID, index.workspaceID, c.Ord, c.Kind, c.Heading, c.Text); err != nil {
+				return err
+			}
 		}
 		// The title goes into every passage: otherwise a two-word German query
 		// finds nothing when one word is in the title and the other in the
@@ -213,5 +246,50 @@ func (s *Server) reindexChunks(index pageChunkIndex) error {
 			return err
 		}
 	}
-	return tx.Commit()
+	for _, c := range old {
+		if used[c.id] {
+			continue
+		}
+		if _, err := tx.Exec(`DELETE FROM page_chunks WHERE id = ?`, c.id); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if err := s.refreshChunkEmbeddings(index.pageID); err != nil {
+		log.Printf("semantic embeddings for page %s: %v", index.pageID, err)
+	}
+	return nil
+}
+
+func (s *Server) refreshChunkEmbeddings(pageID string) error {
+	if s.semanticCache == nil || s.semanticEmbedder == nil {
+		return nil
+	}
+	rows, err := s.db.Query(`SELECT id, text FROM page_chunks WHERE page_id = ? ORDER BY ord`, pageID)
+	if err != nil {
+		return err
+	}
+	type chunkText struct{ id, text string }
+	var chunks []chunkText
+	for rows.Next() {
+		var c chunkText
+		if err := rows.Scan(&c.id, &c.text); err != nil {
+			rows.Close()
+			return err
+		}
+		chunks = append(chunks, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, c := range chunks {
+		if _, _, err := s.semanticCache.GetOrEmbed(context.TODO(), c.id, c.text, s.semanticEmbedder); err != nil {
+			return err
+		}
+	}
+	return s.semanticCache.CleanupStale()
 }

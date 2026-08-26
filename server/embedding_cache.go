@@ -18,7 +18,10 @@ type ChunkEmbeddingCache interface {
 	Lookup(string, string, EmbedderSignature) ([]float32, bool, error)
 	Store(string, string, EmbedderSignature, []float32) error
 	InvalidateChunk(string) error
+	DropPage(string) error
 	DropModel(EmbedderSignature) error
+	DropOtherModels(EmbedderSignature) error
+	CleanupStale() error
 	Drop() error
 }
 
@@ -111,12 +114,63 @@ func (c *chunkEmbeddingCache) InvalidateChunk(chunkID string) error {
 	return nil
 }
 
+func (c *chunkEmbeddingCache) DropPage(pageID string) error {
+	if _, err := c.db.Exec(`DELETE FROM chunk_embeddings WHERE chunk_id IN
+		(SELECT id FROM page_chunks WHERE page_id = ?)`, pageID); err != nil {
+		return fmt.Errorf("drop embeddings for page %s: %w", pageID, err)
+	}
+	return nil
+}
+
 func (c *chunkEmbeddingCache) DropModel(signature EmbedderSignature) error {
 	if err := signature.validate(); err != nil {
 		return err
 	}
 	if _, err := c.db.Exec(`DELETE FROM chunk_embeddings WHERE model_signature = ?`, signature.String()); err != nil {
 		return fmt.Errorf("drop embeddings for model %s: %w", signature, err)
+	}
+	return nil
+}
+
+func (c *chunkEmbeddingCache) DropOtherModels(signature EmbedderSignature) error {
+	if err := signature.validate(); err != nil {
+		return err
+	}
+	if _, err := c.db.Exec(`DELETE FROM chunk_embeddings WHERE model_signature <> ?`, signature.String()); err != nil {
+		return fmt.Errorf("drop obsolete embedding models: %w", err)
+	}
+	return nil
+}
+
+func (c *chunkEmbeddingCache) CleanupStale() error {
+	rows, err := c.db.Query(`SELECT e.chunk_id, e.model_signature, e.content_hash, COALESCE(c.text, '')
+		FROM chunk_embeddings e LEFT JOIN page_chunks c ON c.id = e.chunk_id`)
+	if err != nil {
+		return fmt.Errorf("scan stale embeddings: %w", err)
+	}
+	type staleRow struct{ chunkID, model string }
+	var stale []staleRow
+	for rows.Next() {
+		var chunkID, model, text string
+		var contentHash []byte
+		if err := rows.Scan(&chunkID, &model, &contentHash, &text); err != nil {
+			rows.Close()
+			return fmt.Errorf("read embedding cache row: %w", err)
+		}
+		want := sha256.Sum256([]byte(text))
+		if text == "" || !bytes.Equal(contentHash, want[:]) {
+			stale = append(stale, staleRow{chunkID: chunkID, model: model})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("scan stale embeddings: %w", err)
+	}
+	rows.Close()
+	for _, row := range stale {
+		if _, err := c.db.Exec(`DELETE FROM chunk_embeddings WHERE chunk_id = ? AND model_signature = ?`, row.chunkID, row.model); err != nil {
+			return fmt.Errorf("delete stale embedding for chunk %s: %w", row.chunkID, err)
+		}
 	}
 	return nil
 }

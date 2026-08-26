@@ -856,6 +856,11 @@ func (s *Server) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 			httpError(w, 500, err.Error())
 			return
 		}
+		if _, err := tx.Exec(`DELETE FROM chunk_embeddings WHERE chunk_id IN
+			(SELECT id FROM page_chunks WHERE page_id IN (`+placeholders(len(ids))+`))`, idArgs...); err != nil {
+			httpError(w, 500, err.Error())
+			return
+		}
 		if _, err := tx.Exec(`DELETE FROM pages WHERE id = ?`, id); err != nil {
 			httpError(w, 500, err.Error())
 			return
@@ -981,10 +986,13 @@ func (s *Server) handleRestorePage(w http.ResponseWriter, r *http.Request) {
 }
 
 type searchResult struct {
-	ID      string `json:"id"`
-	Title   string `json:"title"`
-	Icon    string `json:"icon"`
-	Snippet string `json:"snippet"`
+	ID         string                `json:"id"`
+	Title      string                `json:"title"`
+	Icon       string                `json:"icon"`
+	Snippet    string                `json:"snippet"`
+	Kind       string                `json:"kind,omitempty"`
+	Source     string                `json:"source,omitempty"`
+	Provenance []retrievalProvenance `json:"provenance,omitempty"`
 	// Heading: the heading path of the passage that matched, for example
 	// "Contract › Termination". Empty when the hit comes from the fallback or
 	// sits under no heading at all.
@@ -1019,13 +1027,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// hits away, and with a fixed LIMIT the list stayed short as soon as a
 	// workspace held many private pages belonging to other people — you got four
 	// results and believed there were no more.
-	results = s.searchChunks(userID, match, ws, 20)
-	// Fallback: if the passage search finds nothing, the old page search counts.
-	// It is the foundation; a mistake in the cutting may not make content
-	// unfindable.
-	if len(results) == 0 {
-		results = s.searchPagesFallback(userID, match, ws, 20)
-	}
+	results = s.searchHybrid(r.Context(), userID, q, match, ws, 20)
 	writeJSON(w, results)
 }
 
@@ -1052,7 +1054,7 @@ func (s *Server) searchChunks(userID, match string, ws []string, want int) []sea
 	for offset, round := 0, 0; len(out) < want && round < 8; round++ {
 		qArgs := append([]any{}, args...)
 		rows, err := s.db.Query(`
-			SELECT c.page_id, p.title, p.icon, c.heading,
+			SELECT c.page_id, p.title, p.icon, c.kind, c.heading,
 			       snippet(chunks_fts, 3, char(1), char(2), '…', 18)
 			FROM chunks_fts
 			JOIN page_chunks c ON c.id = chunks_fts.chunk_id
@@ -1073,7 +1075,8 @@ func (s *Server) searchChunks(userID, match string, ws []string, want int) []sea
 		var cand []searchResult
 		for rows.Next() {
 			var res searchResult
-			if rows.Scan(&res.ID, &res.Title, &res.Icon, &res.Heading, &res.Snippet) == nil {
+			if rows.Scan(&res.ID, &res.Title, &res.Icon, &res.Kind, &res.Heading, &res.Snippet) == nil {
+				res.Source = "lexical"
 				cand = append(cand, res)
 			}
 		}
@@ -1125,6 +1128,8 @@ func (s *Server) searchPagesFallback(userID, match string, ws []string, want int
 		for rows.Next() {
 			var res searchResult
 			if rows.Scan(&res.ID, &res.Title, &res.Icon, &res.Snippet) == nil {
+				res.Kind = chunkKindBody
+				res.Source = "lexical"
 				cand = append(cand, res)
 			}
 		}

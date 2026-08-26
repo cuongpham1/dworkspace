@@ -8,6 +8,7 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 const embeddingVectorSerializationFormat = "float32-le-v1"
@@ -109,4 +110,84 @@ func validateEmbeddingVector(vector []float32, dimensions int) error {
 		}
 	}
 	return nil
+}
+
+const localEmbeddingDimensions = 128
+
+type localHashEmbedder struct{ signature EmbedderSignature }
+
+func newLocalHashEmbedder() (Embedder, error) {
+	signature, err := NewEmbedderSignature("dworkspace", "local-hash", "v1", localEmbeddingDimensions)
+	if err != nil {
+		return nil, err
+	}
+	return &localHashEmbedder{signature: signature}, nil
+}
+
+func (e *localHashEmbedder) Signature() EmbedderSignature { return e.signature }
+
+func (e *localHashEmbedder) Embed(ctx context.Context, text string) ([]float32, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return hashEmbedding(text, e.signature.Dimensions()), nil
+}
+
+func hashEmbedding(text string, dimensions int) []float32 {
+	vector := make([]float32, dimensions)
+	for _, token := range embeddingTokens(text) {
+		addHashedFeature(vector, token)
+		if len([]rune(token)) >= 5 {
+			for i := 0; i+3 <= len([]rune(token)); i++ {
+				runes := []rune(token)
+				addHashedFeature(vector, string(runes[i:i+3]))
+			}
+		}
+	}
+	norm := float32(0)
+	for _, value := range vector {
+		norm += value * value
+	}
+	if norm == 0 {
+		return vector
+	}
+	norm = float32(math.Sqrt(float64(norm)))
+	for i := range vector {
+		vector[i] /= norm
+	}
+	return vector
+}
+
+func embeddingTokens(text string) []string {
+	var out []string
+	var b strings.Builder
+	flush := func() {
+		if b.Len() > 0 {
+			out = append(out, b.String())
+			b.Reset()
+		}
+	}
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			continue
+		}
+		flush()
+	}
+	flush()
+	return out
+}
+
+func addHashedFeature(vector []float32, feature string) {
+	hashValue := uint32(2166136261)
+	for _, value := range []byte(feature) {
+		hashValue ^= uint32(value)
+		hashValue *= 16777619
+	}
+	index := int(hashValue % uint32(len(vector)))
+	sign := float32(1)
+	if hashValue&1 == 1 {
+		sign = -1
+	}
+	vector[index] += sign
 }

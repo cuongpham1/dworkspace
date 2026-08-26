@@ -77,6 +77,10 @@ func (s *Server) purgeWorkspace(wsID string) error {
 		(SELECT id FROM page_chunks WHERE workspace_id = ?)`, wsID); err != nil {
 		return err
 	}
+	if _, err := tx.Exec(`DELETE FROM chunk_embeddings WHERE chunk_id IN
+		(SELECT id FROM page_chunks WHERE workspace_id = ?)`, wsID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM page_chunks WHERE workspace_id = ?`, wsID); err != nil {
 		return err
 	}
@@ -366,6 +370,11 @@ func (s *Server) applyDeletion(impact deletionImpact, userID, actorID, actorName
 		if _, err := s.db.Exec(`DELETE FROM pages_fts WHERE id IN
 			(SELECT id FROM pages WHERE workspace_id = ? AND owner_id = ? AND visibility = 'private')`, ws.ID, userID); err != nil {
 			log.Printf("shared personal %s: fts: %v", ws.ID, err)
+		}
+		if _, err := s.db.Exec(`DELETE FROM chunk_embeddings WHERE chunk_id IN
+			(SELECT c.id FROM page_chunks c JOIN pages p ON p.id = c.page_id
+			 WHERE p.workspace_id = ? AND p.owner_id = ? AND p.visibility = 'private')`, ws.ID, userID); err != nil {
+			log.Printf("shared personal %s: embeddings: %v", ws.ID, err)
 		}
 		if _, err := s.db.Exec(`DELETE FROM pages WHERE workspace_id = ? AND owner_id = ? AND visibility = 'private'`, ws.ID, userID); err != nil {
 			log.Printf("shared personal %s: private pages: %v", ws.ID, err)
