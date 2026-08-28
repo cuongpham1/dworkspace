@@ -435,6 +435,20 @@ export const api = {
   restoreRevision: (pageId: string, revId: string) =>
     req<{ ok: boolean }>(`/api/pages/${pageId}/revisions/${revId}/restore`, { method: 'POST' }),
 
+  listProposals: (pageId: string, status?: string) =>
+    req<import('./types').PageChangeProposal[]>(`/api/pages/${pageId}/proposals${status ? `?status=${encodeURIComponent(status)}` : ''}`),
+  getProposal: (pageId: string, proposalId: string) =>
+    req<import('./types').PageChangeProposal>(`/api/pages/${pageId}/proposals/${proposalId}`),
+  createProposal: (pageId: string, body: { content?: unknown[]; markdown?: string; proposedTitle?: string; summary?: string }) =>
+    req<import('./types').PageChangeProposal>(`/api/pages/${pageId}/proposals`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  publishProposal: (pageId: string, proposalId: string) =>
+    req<import('./types').PageChangeProposal>(`/api/pages/${pageId}/proposals/${proposalId}/publish`, { method: 'POST' }),
+  rejectProposal: (pageId: string, proposalId: string) =>
+    req<import('./types').PageChangeProposal>(`/api/pages/${pageId}/proposals/${proposalId}/reject`, { method: 'POST' }),
+
   listComments: (pageId: string) => req<import('./types').Comment[]>(`/api/pages/${pageId}/comments`),
   // Open comments per page of a workspace, in one go — for the counters on
   // kanban cards. Deliberately not part of the page list (see

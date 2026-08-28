@@ -170,7 +170,7 @@ to it.
 | Orientation | `list`, `search`, `get_page`, `get_links`, `whoami`, `get_workspace`, `get_permissions` |
 | Pages | `create_page`, `update_page`, `write_content`, `duplicate_page`, `set_trashed`, `save_as_template`, `upload_file`, `embed_database` |
 | Databases | `create_database`, `get_collection`, `update_schema`, `query_rows`, `create_rows`, `set_properties`, `set_view`, `delete_view` |
-| History and talk | `revisions`, `comments`, `delete_comment`, `note` |
+| History and talk | `revisions`, `proposals`, `comments`, `delete_comment`, `note` |
 | Sharing | `set_sharing` |
 | Workspaces | `workspace`, `propose_workspace_rules` |
 | Bulk import | `import_url`, `get_import_status` |
@@ -460,7 +460,8 @@ description, visibility, tags, parent_id, workspace_id or favorite`;
 
 ### write_content
 
-Write Markdown into a page's body.
+Write Markdown into a page's body. Append and prepend remain direct writes;
+replace creates a proposed revision and leaves the canonical page unchanged.
 
 | Parameter | Type | Required |
 | --- | --- | --- |
@@ -471,25 +472,23 @@ Write Markdown into a page's body.
 `append` is the default because it is the only one of the three that cannot
 destroy anything.
 
-All three leave a revision behind, but not the same one, and the difference is
-the whole point of the history:
+`replace` returns a proposal id and the message "awaiting human review". A
+human with page write permission must publish it in the browser. Until then
+there is no canonical update, search update, Yjs reset, webhook, or page
+updated timestamp. Publishing checks the base hash and refuses a stale
+proposal instead of overwriting a newer human edit.
 
-- `prepend` and `replace` save the page **before** overwriting it. That older
-  state is what `revisions` gives you back, so both are undoable.
-- `append` saves a revision **after** it has written. It records the new state,
-  not the old one, so it is a marker in the history and not an undo point. It
-  needs none: an append takes nothing away.
+`prepend` saves a revision before writing. It remains a direct operational
+append-style mutation and resets the live document as before.
 
-Snapshots are throttled to one per page every two minutes, so a burst of writes
-leaves one revision rather than ten — and two `replace` calls a minute apart
-leave only the state from before the first.
+Publishing a proposal snapshots the current canonical state first, so the
+published result remains undoable through version history.
 
-All three write past the realtime editor and then reset the live document.
-Anyone with the page open at that moment loses unsaved edits. That is why append
-is the recommendation, not politeness.
+Only direct append-style writes reset the live document. Proposal creation is
+metadata-only until a human publishes it.
 
 Returns `Appended content to page <id>`, `Prepended N block(s) to page <id>` or
-`Replaced content of page <id>`.
+a JSON proposal record for replace.
 
 Errors: `unknown mode "x" — use append (the default), prepend or replace`;
 `markdown is empty` (prepend); `page "…" not found`.
@@ -913,6 +912,46 @@ and get but not restore.
 
 Errors: `unknown action "x" — use list (the default), get or restore`;
 `revision_id is required for action=get`; `revision "…" not found on page …`.
+
+### proposals
+
+`proposals` is the structured proposal delivery surface for document review.
+Its create action records a pending proposed revision and leaves the canonical
+page unchanged. List and get expose pending and terminal proposal history.
+Publish and reject are intentionally not MCP actions: they require an
+authenticated browser session with page write permission.
+
+The result includes MCP `structuredContent` and an `outputSchema`, while the
+usual text content remains available to clients that only support text. The
+native VUS web review UI is the MVP view. MCP Apps resource rendering is an
+explicit follow-up boundary: this stateless server does not currently expose
+the required `ui://` resource plus `resources/list` / `resources/read`
+protocol, so it is not advertised as supported or faked through tool text.
+
+Proposed document revisions are the review gate for agent-authored replacements.
+
+| Parameter | Type | Required |
+| --- | --- | --- |
+| `page_id` | string | yes |
+| `action` | string | no — **list** (default), **get**, **create** |
+| `proposal_id` | string | for **get** |
+| `markdown` | string | for **create** |
+| proposed_title | string | no |
+| `summary` | string | no |
+
+Create stores the proposed blocks, base hash, creator identity/type, summary
+and `pending` state without changing the page, search index, live collaboration
+document, webhooks or page timestamp. A newer proposal supersedes an older
+pending one. List and get return the complete proposal record, including
+terminal state.
+
+Publishing and rejecting are deliberately absent from model-visible MCP
+actions. The native browser review screen requires a signed-in human session
+with page write permission. Publish snapshots the current page into history,
+checks the base hash, applies the proposed title/content atomically, refreshes
+Yjs and search, emits the page event, and records human audit attribution. A
+stale base returns a conflict and leaves the proposal pending. Reject only
+changes proposal state and is idempotent.
 
 ### comments
 

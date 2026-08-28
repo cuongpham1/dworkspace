@@ -98,23 +98,7 @@ func (s *Server) mcpReplaceContent(u *user, pageID, md string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Save the OLD state first, then overwrite. Without this a change made by an
-	// agent would be beyond recovery — and get_page_history would stay empty even
-	// though the agent just replaced half the page.
-	s.snapshotRevision(pageID, u.ID, u.Name)
-	res, err := s.db.Exec(`UPDATE pages SET content = ?, updated_at = ? WHERE id = ? AND trashed_at IS NULL`,
-		content, now(), pageID)
-	if err != nil {
-		return "", err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return "", fmt.Errorf("page %q not found", pageID)
-	}
-	s.resetYjsDoc(pageID)
-	s.reindexPage(pageID)
-	s.pagesChanged()
-	s.fireWebhook("page.updated", pageID)
-	return fmt.Sprintf("Replaced content of page %s", pageID), nil
+	return s.mcpCreatePageChangeProposal(u, pageID, content, "", "Agent proposed replacing the document content.")
 }
 
 // mcpPrependMarkdown puts Markdown BEFORE the existing content. Notion can do

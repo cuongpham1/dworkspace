@@ -19,6 +19,7 @@ import { PageIcon } from '../pageIcon';
 import { BlockContext } from '../blockContext';
 import CollectionView from './CollectionView';
 import { HistoryModal } from './PageHistory';
+import ProposalReviewModal from './ProposalReviewModal';
 import CommentsPanel, {
   COMMENTS_CHANGED,
   commentsPanelOpen,
@@ -144,6 +145,7 @@ export default function Editor(props: EditorProps) {
         commentsOpen={commentsOpen}
         onToggleComments={showComments}
         onLocalMeta={(patch) => setPage((p) => (p ? { ...p, ...patch } : p))}
+        onReload={() => setNonce((n) => n + 1)}
       >
         {page.type === 'collection' ? (
           <CollectionView
@@ -411,6 +413,7 @@ function PageHeader({
   onNavigate,
   onTrash,
   onLocalMeta,
+  onReload,
   onPagesChanged,
   pagesById,
   structureOpen,
@@ -421,6 +424,7 @@ function PageHeader({
 }: EditorProps & {
   page: Page;
   onLocalMeta: (patch: Partial<PageMeta>) => void;
+  onReload: () => void;
   structureOpen: boolean;
   onToggleStructure: () => void;
   commentsOpen: boolean;
@@ -449,6 +453,7 @@ function PageHeader({
   useMenuDismiss(shareOpen, shareWrapRef, () => setShareOpen(false));
   useMenuDismiss(overflowOpen, overflowWrapRef, () => setOverflowOpen(false));
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [proposalsOpen, setProposalsOpen] = useState(false);
   const [openComments, setOpenComments] = useState(0);
   // Same rule as in Editor, and it has to be asked here too: this is where the
   // button, the menu entries and the count live.
@@ -871,6 +876,15 @@ function PageHeader({
                 >
                   <History size={15} /> {t('Version history')}
                 </button>
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    setProposalsOpen(true);
+                  }}
+                >
+                  <FileText size={15} /> {t('Proposed revisions')}
+                </button>
                 {/* On a phone the topbar keeps only the star, the panel and this
                     menu — six icons side by side made the head of the page look
                     busier than its content. The three that step aside come back
@@ -1030,6 +1044,19 @@ function PageHeader({
             pageId={pageId}
             onClose={() => setHistoryOpen(false)}
             onRestored={onPagesChanged}
+          />
+        )}
+        {proposalsOpen && (
+          <ProposalReviewModal
+            pageId={pageId}
+            canonicalContent={page.content}
+            canonicalTitle={page.title}
+            canEdit={canEdit}
+            onClose={() => setProposalsOpen(false)}
+            onPublished={() => {
+              onPagesChanged();
+              onReload();
+            }}
           />
         )}
       </div>

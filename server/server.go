@@ -307,7 +307,12 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 
 	m.HandleFunc("GET /api/pages/{id}/revisions", s.auth(s.handleListRevisions))
 	m.HandleFunc("GET /api/pages/{id}/revisions/{revId}", s.auth(s.handleGetRevision))
-	m.HandleFunc("POST /api/pages/{id}/revisions/{revId}/restore", s.auth(s.handleRestoreRevision))
+	m.HandleFunc("POST /api/pages/{id}/revisions/{revId}/restore", s.auth(s.sessionOnly(s.handleRestoreRevision)))
+	m.HandleFunc("GET /api/pages/{id}/proposals", s.auth(s.handleListPageChangeProposals))
+	m.HandleFunc("GET /api/pages/{id}/proposals/{proposalId}", s.auth(s.handleGetPageChangeProposal))
+	m.HandleFunc("POST /api/pages/{id}/proposals", s.auth(s.handleCreatePageChangeProposal))
+	m.HandleFunc("POST /api/pages/{id}/proposals/{proposalId}/publish", s.auth(s.sessionOnly(s.handlePublishPageChangeProposal)))
+	m.HandleFunc("POST /api/pages/{id}/proposals/{proposalId}/reject", s.auth(s.sessionOnly(s.handleRejectPageChangeProposal)))
 
 	m.HandleFunc("POST /api/pages/{id}/duplicate", s.auth(s.handleDuplicatePage))
 	m.HandleFunc("POST /api/import", s.auth(s.handleImport))

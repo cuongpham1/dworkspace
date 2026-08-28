@@ -1804,6 +1804,275 @@ button {
   background: var(--hover);
 }
 
+.proposal-dialog {
+  width: min(940px, 96vw);
+}
+
+.proposal-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.proposal-dialog-head h2 {
+  margin-bottom: 6px;
+}
+
+.proposal-layout {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.34fr) minmax(0, 0.66fr);
+  gap: 18px;
+  min-height: 390px;
+}
+
+.proposal-sidebar {
+  border-right: 1px solid var(--border);
+  padding-right: 14px;
+  overflow-y: auto;
+}
+
+.proposal-list-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas: 'icon copy' 'icon status';
+  align-items: start;
+  text-align: left;
+  gap: 3px 8px;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+.proposal-list-item:hover,
+.proposal-list-item.selected {
+  background: var(--hover);
+}
+
+.proposal-list-icon {
+  grid-area: icon;
+  color: var(--muted);
+  padding-top: 2px;
+}
+
+.proposal-list-copy {
+  grid-area: copy;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proposal-list-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.proposal-list-copy small,
+.proposal-creator {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.proposal-list-item .proposal-status {
+  grid-area: status;
+  justify-self: start;
+}
+
+.proposal-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.proposal-status-pending {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.proposal-status-published {
+  color: var(--accent);
+}
+
+.proposal-status-rejected,
+.proposal-status-superseded {
+  color: var(--muted);
+}
+
+.proposal-main {
+  min-width: 0;
+}
+
+.proposal-meta {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.proposal-meta > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.proposal-meta p {
+  margin: 9px 0 0;
+  font-size: 13px;
+}
+
+.proposal-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 14px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.proposal-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.proposal-tabs button:hover,
+.proposal-tabs button.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+}
+
+.proposal-preview,
+.proposal-diff {
+  max-height: 42vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.proposal-preview-title {
+  margin: 0 0 14px;
+  font-size: 19px;
+}
+
+.proposal-block {
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.proposal-block-heading,
+.proposal-block-heading-one,
+.proposal-block-heading-two,
+.proposal-block-heading-three {
+  font-weight: 650;
+  padding-top: 12px;
+}
+
+.proposal-block-bulletListItem::before,
+.proposal-block-numberedListItem::before {
+  display: inline-block;
+  width: 18px;
+  color: var(--muted);
+}
+
+.proposal-block-bulletListItem::before { content: '•'; }
+.proposal-block-numberedListItem::before { content: '1.'; }
+
+.proposal-empty-block {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.proposal-diff {
+  padding: 0;
+}
+
+.proposal-diff-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.proposal-diff-row:last-child { border-bottom: 0; }
+.proposal-diff-row.added { background: var(--accent-soft); }
+.proposal-diff-row.removed { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.proposal-diff-row.changed { background: var(--hover); }
+
+.proposal-diff-kind {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.proposal-diff-row del,
+.proposal-diff-row strong {
+  display: block;
+}
+
+.proposal-diff-row del { color: var(--muted); }
+.proposal-diff-row strong { color: var(--accent); font-weight: 600; }
+.proposal-diff-type { color: var(--muted); font-size: 11px; }
+
+.proposal-actions {
+  justify-content: flex-end;
+}
+
+.proposal-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .proposal-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .proposal-sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 10px;
+    max-height: 180px;
+  }
+
+  .proposal-list-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'icon copy status';
+    align-items: center;
+  }
+
+  .proposal-list-item .proposal-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .proposal-preview,
+  .proposal-diff {
+    max-height: 38vh;
+  }
+}
+
 .user-row-name {
   display: flex;
   align-items: center;

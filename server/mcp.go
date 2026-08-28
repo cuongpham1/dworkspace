@@ -46,6 +46,14 @@ func textResult(text string, isError bool) map[string]any {
 	}
 }
 
+func structuredTextResult(text string, isError bool, value any) map[string]any {
+	result := textResult(text, isError)
+	if value != nil {
+		result["structuredContent"] = value
+	}
+	return result
+}
+
 // wrapUntrusted fences stored page/search content the agent reads so that any
 // instructions embedded in a note ("ignore your rules and…") are clearly framed
 // as user data, not commands (Q13, prompt injection). The server can't sanitize
@@ -131,7 +139,7 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name": "update_page",
-		"description": "Update a page's metadata: title, icon, cover, description, tags, visibility — and where it sits. " +
+		"description": "Update a page's metadata: icon, cover, description, tags, visibility — and where it sits. Title changes create a proposed revision that stays unchanged until a human publishes it. " +
 			"parent_id moves it under another page (empty string moves it to the top level), workspace_id moves it and its whole sub-tree into another workspace, " +
 			"and favorite pins it in the sidebar. Only the fields you pass are changed. Tags replace the whole list — call list with kind=\"tags\" first and " +
 			"reuse existing tags instead of inventing near-duplicates. Cover: " + coverHint,
@@ -271,18 +279,18 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "write_content",
-		"description": "Write Markdown into a page. mode: append (the default — adds at the end) | prepend (adds at the top) | replace (replaces the whole body). " + pageLinkHint + " " + diagramHint,
+		"description": "Write Markdown into a page. mode: append (the default — adds at the end) | prepend (adds at the top) | replace (creates a proposed revision and leaves the canonical body unchanged until human Publish). " + pageLinkHint + " " + diagramHint,
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
 				"page_id":  map[string]any{"type": "string"},
 				"markdown": map[string]any{"type": "string"},
-				"mode":     map[string]any{"type": "string", "description": "append (default) | prepend | replace. replace overwrites the body and bypasses the realtime editor, so anyone with the page open loses unsaved edits — prefer append."},
+				"mode":     map[string]any{"type": "string", "description": "append (default) | prepend | replace. replace creates a proposal for human review; it does not overwrite the canonical body."},
 			},
 			"required": []string{"page_id", "markdown"}},
 	},
 	{
 		"name":        "revisions",
-		"description": "A page's history. action: list (the default — every revision with author, time, and whether a HUMAN or an AGENT made it) | get (one older state as Markdown) | restore (put the page back to it). Restoring saves the CURRENT state as a new revision first, so it is itself reversible.",
+		"description": "A page's history. action: list (the default — every revision with author and time) | get (one older state as Markdown) | restore (creates a proposed revision from it; a human must publish before the page changes).",
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
 				"page_id":     map[string]any{"type": "string"},
@@ -291,6 +299,31 @@ var mcpTools = []map[string]any{
 				"limit":       map[string]any{"type": "integer", "description": "list only: how many revisions (default 20, max 100)."},
 			},
 			"required": []string{"page_id"}},
+	},
+	{
+		"name":        "proposals",
+		"description": "Proposed document revisions. action: list (the default) | get | create. Creating a proposal never changes the canonical page; it reports that the revision is awaiting human review. Publish and reject are browser-only approval actions.",
+		"inputSchema": map[string]any{"type": "object",
+			"properties": map[string]any{
+				"page_id":        map[string]any{"type": "string"},
+				"action":         map[string]any{"type": "string", "description": "list (default) | get | create"},
+				"proposal_id":    map[string]any{"type": "string", "description": "Required for get."},
+				"markdown":       map[string]any{"type": "string", "description": "Required for create; replaces the document body in the proposed state."},
+				"proposed_title": map[string]any{"type": "string"},
+				"summary":        map[string]any{"type": "string"},
+			},
+			"required": []string{"page_id"}},
+		"outputSchema": map[string]any{
+			"type":        "object",
+			"description": "Structured proposal metadata and content; text content remains available for clients without structured output support.",
+			"properties": map[string]any{
+				"id":        map[string]any{"type": "string"},
+				"pageId":    map[string]any{"type": "string"},
+				"status":    map[string]any{"type": "string", "enum": []string{"pending", "published", "rejected", "superseded"}},
+				"message":   map[string]any{"type": "string"},
+				"proposals": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+			},
+		},
 	},
 	{
 		"name":        "comments",
@@ -615,6 +648,13 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			rpcResult(w, req.ID, textResult(err.Error(), true))
 			return
 		}
+		if params.Name == "proposals" {
+			var value any
+			if json.Unmarshal([]byte(result), &value) == nil {
+				rpcResult(w, req.ID, structuredTextResult(result, false, value))
+				return
+			}
+		}
 		rpcResult(w, req.ID, textResult(result, false))
 	default:
 		if strings.HasPrefix(req.Method, "notifications/") {
@@ -701,10 +741,13 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		// workspace(from_workspace:) — copy a workspace's structure.
 		FromWorkspace string `json:"from_workspace"`
 		// working_on — the agent presence check-in.
-		Agent string `json:"agent"`
-		Label string `json:"label"`
-		Note  string `json:"note"`
-		Text  string `json:"text"` // note() — the trail entry itself
+		Agent         string `json:"agent"`
+		Label         string `json:"label"`
+		Note          string `json:"note"`
+		Text          string `json:"text"` // note() — the trail entry itself
+		ProposalID    string `json:"proposal_id"`
+		ProposedTitle string `json:"proposed_title"`
+		Summary       string `json:"summary"`
 
 		ExpectedMinutes int  `json:"expected_minutes"`
 		Done            bool `json:"done"`
@@ -748,6 +791,8 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		mutating = args.Action == "restore"
 	case "comments":
 		mutating = args.Action == "add" || args.Action == "resolve" || args.Action == "reopen"
+	case "proposals":
+		mutating = args.Action == "create"
 	}
 	// Any call naming a page is a sign of life for whatever THIS account has
 	// checked in there, so an agent working inside dworkspace stays fresh without
@@ -789,7 +834,7 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 			if args.PageID != "" && !s.canRead(userID, args.PageID) {
 				return "", fmt.Errorf("page %q not found", args.PageID)
 			}
-		case "revisions", "comments":
+		case "revisions", "comments", "proposals":
 			// Both carry read and write actions. Gating either one at the stricter
 			// level would stop a viewer reading a history they are allowed to see.
 			ok := s.canRead(userID, args.PageID)
@@ -962,10 +1007,21 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 				}
 				done = append(done, msg)
 			}
-			hasMeta := args.Title != "" || args.Icon != "" || args.Cover != "" ||
+			if args.Title != "" {
+				var content string
+				if err := s.db.QueryRow(`SELECT content FROM pages WHERE id = ? AND trashed_at IS NULL`, args.PageID).Scan(&content); err != nil {
+					return "", fmt.Errorf("page %q not found", args.PageID)
+				}
+				proposal, err := s.mcpCreatePageChangeProposal(u, args.PageID, content, args.Title, "Agent proposed changing the document title.")
+				if err != nil {
+					return "", err
+				}
+				done = append(done, proposal)
+			}
+			hasMeta := args.Icon != "" || args.Cover != "" ||
 				args.Description != "" || args.Visibility != "" || args.Tags != nil
 			if hasMeta {
-				msg, err := s.mcpUpdatePageMeta(args.PageID, args.Title, args.Icon, args.Cover,
+				msg, err := s.mcpUpdatePageMeta(args.PageID, "", args.Icon, args.Cover,
 					args.Description, args.Visibility, args.Tags)
 				if err != nil {
 					return "", err
@@ -1151,6 +1207,8 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 			return s.mcpWriteContent(u, args.PageID, args.Markdown, args.Mode)
 		case "revisions":
 			return s.mcpRevisions(u, args.PageID, args.Action, args.RevisionID, args.Limit)
+		case "proposals":
+			return s.mcpProposals(u, args.PageID, args.Action, args.ProposalID, args.Markdown, args.ProposedTitle, args.Summary)
 		case "comments":
 			return s.mcpComments(u, args.PageID, args.Action, args.Body, args.BlockID, args.CommentID, args.Resolved)
 		case "set_sharing":
@@ -1187,7 +1245,7 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		// property — the generic one here has no way to know what changed, and
 		// two entries for one call would make the log lie about how much
 		// happened.
-		if name != "working_on" && name != "note" && name != "set_properties" {
+		if name != "working_on" && name != "note" && name != "set_properties" && name != "proposals" && !(name == "write_content" && args.Mode == "replace") {
 			ws := s.pageWorkspace(args.PageID)
 			if ws == "" { // create_page has no page_id arg — attribute to the actor's workspace
 				ws = s.userDefaultWorkspace(userID)
