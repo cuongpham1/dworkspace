@@ -122,21 +122,28 @@ var mcpTools = []map[string]any{
 		"description": "Create a new canonical document proposal, optionally under a parent and with initial Markdown content. No page is created, indexed, or visible in the Documents tree until a human publishes the proposal in the review workspace. Cover, tags, description, deterministic fact constraints, and conservative related-document candidates can be included for human review.",
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
-				"title":                map[string]any{"type": "string"},
-				"template_id":          map[string]any{"type": "string", "description": "Build the page from a template instead of from scratch — call list with kind=\"templates\" for the ids. Only title applies alongside it."},
-				"parent_id":            map[string]any{"type": "string", "description": "Optional parent page id. Pass a database id to create a ROW in that database."},
-				"workspace_id":         map[string]any{"type": "string", "description": "Which workspace to create in when there is no parent_id. Call list with kind=\"workspaces\" first — without this the page lands in your first workspace, which may not be the one you mean."},
-				"markdown":             map[string]any{"type": "string", "description": "Optional initial content as Markdown. " + pageLinkHint + " " + diagramHint},
-				"icon":                 map[string]any{"type": "string", "description": "Optional emoji, \"lucide:Name\", \"mdi:Name\" or image URL"},
-				"properties":           map[string]any{"type": "object", "description": "Typed property values when creating a database row — same shape as set_properties. Call get_collection first for property ids."},
-				"cover":                map[string]any{"type": "string", "description": coverHint},
-				"description":          map[string]any{"type": "string", "description": "Optional one-line summary, shown under the title."},
-				"tags":                 map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags. Call list with kind=\"tags\" first and reuse what exists instead of inventing near-duplicates."},
-				"fact_review":          map[string]any{"type": "object", "description": "Optional machine-readable fact review with facts and constraints. Only explicit constraints are validated; otherwise validation is UNKNOWN."},
-				"related_candidates":   map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional related document candidates. Candidates are suggestions, never facts or automatic links."},
-				"selected_related_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Candidate page ids to link only if a human confirms them in review."},
+				"title":              map[string]any{"type": "string"},
+				"template_id":        map[string]any{"type": "string", "description": "Build the page from a template instead of from scratch — call list with kind=\"templates\" for the ids. Only title applies alongside it."},
+				"parent_id":          map[string]any{"type": "string", "description": "Optional parent page id. Pass a database id to create a ROW in that database."},
+				"workspace_id":       map[string]any{"type": "string", "description": "Which workspace to create in when there is no parent_id. Call list with kind=\"workspaces\" first — without this the page lands in your first workspace, which may not be the one you mean."},
+				"markdown":           map[string]any{"type": "string", "description": "Optional initial content as Markdown. " + pageLinkHint + " " + diagramHint},
+				"icon":               map[string]any{"type": "string", "description": "Optional emoji, \"lucide:Name\", \"mdi:Name\" or image URL"},
+				"properties":         map[string]any{"type": "object", "description": "Typed property values when creating a database row — same shape as set_properties. Call get_collection first for property ids."},
+				"cover":              map[string]any{"type": "string", "description": coverHint},
+				"description":        map[string]any{"type": "string", "description": "Optional one-line summary, shown under the title."},
+				"tags":               map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags. Call list with kind=\"tags\" first and reuse what exists instead of inventing near-duplicates."},
+				"fact_review":        map[string]any{"type": "object", "description": "Optional machine-readable fact review with facts and constraints. Only explicit constraints are validated; otherwise validation is UNKNOWN."},
+				"related_candidates": map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional related document candidates. Candidates are suggestions, never facts or automatic links."},
 			},
 			"required": []string{"title"}},
+		"outputSchema": map[string]any{
+			"type": "object", "properties": map[string]any{
+				"proposal": map[string]any{"type": "object"}, "kind": map[string]any{"type": "string"},
+				"status": map[string]any{"type": "string"}, "reviewUrl": map[string]any{"type": "string"},
+				"factReview": map[string]any{"type": "object"}, "relatedCandidates": map[string]any{"type": "array"},
+			},
+		},
+		"_meta": map[string]any{"ui": map[string]any{"resourceUri": mcpAppResourceURI, "visibility": []string{"model", "app"}}},
 	},
 	{
 		"name": "update_page",
@@ -303,20 +310,17 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "proposals",
-		"description": "Proposed canonical document create/edit review. action: list (the default) | get | create. A create proposal has no page_id and creates no canonical page until human Publish; an edit proposal keeps its original base hash. Both can be edited in the human review workspace. Fact constraints are validated only when represented deterministically; otherwise validation is UNKNOWN. Related candidates are suggestions and never fill fact gaps. Publish and reject are browser-only approval actions.",
+		"description": "Proposed canonical document edit review. action: list (the default) | get | create. An edit proposal keeps its original base hash and can be edited in the human review workspace before browser-only Publish or reject. Use create_page for gated canonical document creation, fact-review claims, and related-document candidates.",
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
-				"page_id":              map[string]any{"type": "string", "description": "Edit proposal target page. Omit for all accessible proposals."},
-				"action":               map[string]any{"type": "string", "description": "list (default) | get | create"},
-				"proposal_id":          map[string]any{"type": "string", "description": "Required for get."},
-				"markdown":             map[string]any{"type": "string", "description": "Required for create; replaces the document body in the proposed state."},
-				"proposed_title":       map[string]any{"type": "string"},
-				"summary":              map[string]any{"type": "string"},
-				"fact_review":          map[string]any{"type": "object", "description": "Deterministic facts and constraints for review; unknown when no machine-readable constraint exists."},
-				"related_candidates":   map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
-				"selected_related_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				"page_id":        map[string]any{"type": "string", "description": "Edit proposal target page. Omit for all accessible proposals."},
+				"action":         map[string]any{"type": "string", "description": "list (default) | get | create"},
+				"proposal_id":    map[string]any{"type": "string", "description": "Required for get."},
+				"markdown":       map[string]any{"type": "string", "description": "Required for create; replaces the document body in the proposed state."},
+				"proposed_title": map[string]any{"type": "string"},
+				"summary":        map[string]any{"type": "string"},
 			},
-			"required": []string{"page_id"}},
+			"required": []string{}},
 		"outputSchema": map[string]any{
 			"type":        "object",
 			"description": "Structured proposal metadata and content; text content remains available for clients without structured output support.",
@@ -683,7 +687,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			rpcResult(w, req.ID, textResult(err.Error(), true))
 			return
 		}
-		if params.Name == "proposals" {
+		if params.Name == "proposals" || params.Name == "create_page" {
 			var value any
 			if json.Unmarshal([]byte(result), &value) == nil {
 				if structured, ok := value.(map[string]any); ok {
@@ -907,17 +911,15 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		parentID = *args.ParentID
 	}
 
-	// A workspace-scoped API token narrows access further: even pages the user
-	// could otherwise reach are invisible if they live outside the token's scope.
-	// This covers every tool that names a page or a parent, including a move's
-	// destination (checked against the parent workspace).
-	if u.TokenWorkspaces != nil {
-		if args.PageID != "" && !s.credentialMayEnter(u, s.pageWorkspace(args.PageID)) {
-			return "", fmt.Errorf("page %q not found", args.PageID)
-		}
-		if parentID != "" && !s.credentialMayEnter(u, s.pageWorkspace(parentID)) {
-			return "", fmt.Errorf("parent page %q not found", parentID)
-		}
+	// The credential and workspace policies both apply to every tool that names a
+	// page or a parent, including a move's destination (checked against the
+	// parent workspace). This must also run for unrestricted tokens: strict and
+	// closed workspaces can reject an agent based on the workspace policy alone.
+	if args.PageID != "" && !s.credentialMayEnter(u, s.pageWorkspace(args.PageID)) {
+		return "", fmt.Errorf("page %q not found", args.PageID)
+	}
+	if parentID != "" && !s.credentialMayEnter(u, s.pageWorkspace(parentID)) {
+		return "", fmt.Errorf("parent page %q not found", parentID)
 	}
 
 	run := func() (string, error) {
@@ -1016,8 +1018,7 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 			}
 			input := proposalInput{ParentID: parent, WorkspaceID: workspaceID, Title: args.Title, Content: content,
 				Type: "doc", Icon: args.Icon, Cover: args.Cover, Description: args.Description, Props: "{}",
-				Tags: tags, Summary: "Agent proposed a new canonical document.", FactReview: factReview, RelatedCandidates: related,
-				SelectedRelatedIDs: args.SelectedRelatedIDs}
+				Tags: tags, Summary: "Agent proposed a new canonical document.", FactReview: factReview, RelatedCandidates: related}
 			if len(args.Properties) > 0 {
 				if !json.Valid(args.Properties) {
 					return "", fmt.Errorf("properties must be valid JSON")

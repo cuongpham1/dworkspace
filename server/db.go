@@ -357,7 +357,12 @@ CREATE INDEX IF NOT EXISTS idx_comment_page ON comments(page_id, created_at);
 
 // ensureColumn adds a column to an existing table if it is missing
 // (SQLite has no ADD COLUMN IF NOT EXISTS).
-func ensureColumn(db *sql.DB, table, column, ddl string) error {
+type sqlSchemaExecutor interface {
+	Query(string, ...any) (*sql.Rows, error)
+	Exec(string, ...any) (sql.Result, error)
+}
+
+func ensureColumn(db sqlSchemaExecutor, table, column, ddl string) error {
 	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return err
@@ -439,20 +444,25 @@ func migrateProposalTable(db *sql.DB) error {
 	if err := rows.Close(); err != nil {
 		return err
 	}
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin proposal migration: %w", err)
+	}
+	defer tx.Rollback()
 	if pageIDNotNull {
-		if _, err := db.Exec(`DROP INDEX IF EXISTS idx_proposal_page_status`); err != nil {
+		if _, err := tx.Exec(`DROP INDEX IF EXISTS idx_proposal_page_status`); err != nil {
 			return err
 		}
-		if _, err := db.Exec(`DROP INDEX IF EXISTS idx_proposal_status_created`); err != nil {
+		if _, err := tx.Exec(`DROP INDEX IF EXISTS idx_proposal_status_created`); err != nil {
 			return err
 		}
-		if _, err := db.Exec(`ALTER TABLE page_change_proposals RENAME TO page_change_proposals_legacy`); err != nil {
+		if _, err := tx.Exec(`ALTER TABLE page_change_proposals RENAME TO page_change_proposals_legacy`); err != nil {
 			return fmt.Errorf("rename legacy proposals: %w", err)
 		}
-		if _, err := db.Exec(proposalTableDDL); err != nil {
+		if _, err := tx.Exec(proposalTableDDL); err != nil {
 			return fmt.Errorf("create proposal table: %w", err)
 		}
-		_, err = db.Exec(`INSERT INTO page_change_proposals
+		_, err = tx.Exec(`INSERT INTO page_change_proposals
 			(id, page_id, base_hash, proposed_content, proposed_title, creator_id, creator_type, creator_name,
 			 created_at, updated_at, status, summary, published_at, published_by, rejected_at, rejected_by)
 			SELECT id, page_id, base_hash, proposed_content, proposed_title, creator_id, creator_type, creator_name,
@@ -461,10 +471,31 @@ func migrateProposalTable(db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("copy legacy proposals: %w", err)
 		}
-		if _, err := db.Exec(`DROP TABLE page_change_proposals_legacy`); err != nil {
+		if _, err := tx.Exec(`DROP TABLE page_change_proposals_legacy`); err != nil {
 			return fmt.Errorf("drop legacy proposals: %w", err)
 		}
-		columns = map[string]bool{"proposal_kind": true}
+		columns = map[string]bool{}
+		rows, err := tx.Query(`PRAGMA table_info(page_change_proposals)`)
+		if err != nil {
+			return fmt.Errorf("inspect migrated proposals: %w", err)
+		}
+		for rows.Next() {
+			var cid, notNull, pk int
+			var name, typ string
+			var defaultValue any
+			if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+				rows.Close()
+				return fmt.Errorf("scan migrated proposals: %w", err)
+			}
+			columns[name] = true
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return fmt.Errorf("inspect migrated proposals: %w", err)
+		}
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("close migrated proposals: %w", err)
+		}
 	}
 	for _, column := range []struct{ name, ddl string }{
 		{"proposal_kind", `proposal_kind TEXT NOT NULL DEFAULT 'edit'`},
@@ -484,17 +515,41 @@ func migrateProposalTable(db *sql.DB) error {
 		{"last_human_edited_at", `last_human_edited_at TEXT`},
 	} {
 		if !columns[column.name] {
-			if err := ensureColumn(db, "page_change_proposals", column.name, column.ddl); err != nil {
+			if err := ensureColumn(tx, "page_change_proposals", column.name, column.ddl); err != nil {
 				return fmt.Errorf("migrate proposal %s: %w", column.name, err)
 			}
 			columns[column.name] = true
 		}
 	}
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_proposal_page_status ON page_change_proposals(page_id, status, created_at)`)
+	_, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_proposal_page_status ON page_change_proposals(page_id, status, created_at)`)
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_proposal_status_created ON page_change_proposals(status, created_at)`)
+	_, err = tx.Exec(`CREATE INDEX IF NOT EXISTS idx_proposal_status_created ON page_change_proposals(status, created_at)`)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit proposal migration: %w", err)
+	}
+	return nil
+}
+
+func backfillEditProposalMetadata(db *sql.DB) error {
+	if _, err := db.Exec(`UPDATE page_change_proposals
+		SET base_hash = 'legacy-content:' || base_hash
+		WHERE proposal_kind = 'edit' AND page_id IS NOT NULL AND base_hash NOT LIKE 'revision:%' AND base_hash NOT LIKE 'legacy-content:%'`); err != nil {
+		return err
+	}
+	_, err := db.Exec(`UPDATE page_change_proposals
+		SET proposed_type = COALESCE((SELECT type FROM pages WHERE pages.id = page_change_proposals.page_id), 'doc'),
+			proposed_icon = COALESCE((SELECT icon FROM pages WHERE pages.id = page_change_proposals.page_id), ''),
+			proposed_cover = COALESCE((SELECT cover FROM pages WHERE pages.id = page_change_proposals.page_id), ''),
+			proposed_description = COALESCE((SELECT description FROM pages WHERE pages.id = page_change_proposals.page_id), ''),
+			proposed_tags = COALESCE((SELECT tags FROM pages WHERE pages.id = page_change_proposals.page_id), '[]'),
+			proposed_props = COALESCE((SELECT props FROM pages WHERE pages.id = page_change_proposals.page_id), '{}'),
+			original_snapshot = '{"legacyBackfilled":true}'
+		WHERE proposal_kind = 'edit' AND page_id IS NOT NULL AND original_snapshot = '{}'`)
 	return err
 }
 
@@ -564,6 +619,9 @@ func openDB(path string) (*sql.DB, error) {
 	// Optional Notion-style page description (shown under the title, toggleable).
 	if err := ensureColumn(db, "pages", "description", `description TEXT NOT NULL DEFAULT ''`); err != nil {
 		return nil, fmt.Errorf("migrate pages.description: %w", err)
+	}
+	if err := backfillEditProposalMetadata(db); err != nil {
+		return nil, fmt.Errorf("migrate proposal metadata: %w", err)
 	}
 	// Workspace icon (emoji) + image (uploaded logo URL) for the workspace switcher.
 	if err := ensureColumn(db, "workspaces", "icon", `icon TEXT NOT NULL DEFAULT ''`); err != nil {

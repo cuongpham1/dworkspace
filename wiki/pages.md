@@ -479,7 +479,7 @@ correct where they stand.
 
 | Tool | What it does here |
 | --- | --- |
-| `create_page` | title, parent or workspace, initial Markdown, icon, cover, description, tags, and row properties — all in one call. `template_id` builds the page from a template instead, and then only `title` applies alongside it |
+| `create_page` | title, parent or workspace, initial Markdown, icon, cover, description, tags, and row properties — all in one pending create proposal. No canonical page or `page.created` event exists until a human publishes it. `template_id` builds the proposal from a template instead, and then only `title` applies alongside it |
 | `get_page` | one page as Markdown; `include_children` returns the whole subtree in one answer |
 | `update_page` | title, icon, cover, description, tags, visibility, `parent_id` (empty string = top level), `workspace_id` (moves the subtree), `favorite` |
 | `write_content` | Markdown into the body: `append` (the default), `prepend` or `replace` |

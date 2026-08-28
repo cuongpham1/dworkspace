@@ -1943,10 +1943,25 @@ button {
 
 .proposal-editor-fields,
 .proposal-metadata,
-.proposal-related {
+.proposal-related,
+.proposal-destination {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.proposal-destination {
+  padding-bottom: 4px;
+}
+
+.proposal-destination h3 {
+  margin: 0;
+}
+
+.proposal-destination p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .proposal-editor-fields {
@@ -1977,9 +1992,39 @@ button {
 }
 
 .proposal-editor-fields textarea {
-  min-height: 180px;
+  min-height: 90px;
   resize: vertical;
   line-height: 1.5;
+}
+
+.proposal-structured-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.proposal-edit-block {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.proposal-block-type,
+.proposal-rank {
+  color: var(--muted);
+  font: 10px/1.4 var(--mono, monospace);
+}
+
+.proposal-edit-block textarea {
+  min-height: 48px;
+  resize: vertical;
+}
+
+.proposal-preserved-block {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 8px 0;
 }
 
 .proposal-knowledge {
@@ -2031,6 +2076,84 @@ button {
   line-height: 1.4;
 }
 
+.proposal-facts {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.proposal-facts h3,
+.proposal-provenance h3 {
+  margin: 0;
+  font-size: 12px;
+}
+
+.proposal-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.proposal-fact span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.proposal-fact small {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.proposal-fact input,
+.proposal-candidate-search input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.proposal-candidate-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.proposal-candidate-result {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  padding: 3px 0;
+  text-align: left;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.proposal-provenance {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.proposal-provenance p {
+  margin: 0;
+}
+
 .proposal-related,
 .proposal-metadata {
   margin-top: 18px;
@@ -2057,6 +2180,10 @@ button {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+}
+
+.proposal-candidate > .icon-btn {
+  justify-self: end;
 }
 
 .proposal-meta {

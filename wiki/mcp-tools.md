@@ -389,7 +389,6 @@ which is also what you get for a page you may not read.
 | `tags` | array of string | no |
 | `fact_review` | object | no |
 | `related_candidates` | array | no |
-| `selected_related_ids` | array of string | no |
 
 `create_page` creates a pending **create proposal** rather than a canonical page.
 Until a human publishes it, there is no page row, Documents tree entry, search
@@ -420,11 +419,23 @@ share.
 `tags` are normalised the way the interface normalises them: a leading `#` is
 dropped, spaces become hyphens, duplicates removed.
 
-**With `template_id` nothing else applies but `title`.** The call goes straight
-to instantiating the template and every other argument is ignored.
+Agent-supplied `fact_review` values are untrusted claims. They are retained for
+review, but the server reports `UNKNOWN` and does not count their categories or
+constraints as deterministic completeness. A human can explicitly confirm or
+edit facts in the browser; free-form workspace rules are never heuristically
+parsed as machine-verifiable constraints.
 
-Returns `Created page "Title" with id <id> (path: /p/<id>)`, or
-`Created page <id> from template <id>`.
+Related candidates are suggestions only. `create_page` never accepts or honors
+model-selected links. A human may search, add, dismiss, check, or uncheck
+candidates in the review workspace; only checked, still-accessible candidates
+materialize as links on Publish.
+
+**With `template_id` nothing else applies but `title`.** The call creates a
+pending create proposal from the template; it does not instantiate a canonical
+page until a human publishes it.
+
+Returns `CREATED PROPOSAL awaiting human review`; structured output includes the
+proposal id, `kind: create`, `status: pending`, and a review path or URL.
 
 Errors: `title is required`; `parent page "…" not found`; `template "…" not
 found`; `page "…" is not a template`; the cover message above; `you are a viewer
@@ -924,22 +935,19 @@ Errors: `unknown action "x" — use list (the default), get or restore`;
 
 ### proposals
 
-`proposals` is the structured proposal delivery surface for document review.
+`proposals` is the structured proposal delivery surface for document edit review.
 Its create action records a pending proposed revision and leaves the canonical
-page unchanged. Create proposals have no `page_id` until publish; edit proposals
-retain their original base hash. Both are editable in the signed-in human
-review workspace. List and get expose pending and terminal proposal history.
-Publish and reject are intentionally not MCP actions: they require an
-authenticated browser session with page write permission.
+page unchanged. Edit proposals retain their original base hash and are editable
+in the signed-in human review workspace. List and get expose pending and terminal
+proposal history. Publish and reject are intentionally not MCP actions: they
+require an authenticated browser session with page write permission.
 
-The optional `fact_review` contains machine-readable facts and constraints.
-Only explicit constraints are validated deterministically. A free-form
-workspace rule is not parsed or treated as proof: its validation is `UNKNOWN`.
-Fact categories include `provided`, `derived`, `assumption`, `missing`, and
-`unsupported`; humans can fill deterministic gaps directly in the review
-workspace. `related_candidates` are ranked suggestions with rationale/snippet,
-not facts. They are unchecked by default and only selected candidates become
-canonical links on publish; candidates never satisfy a missing fact.
+The `create_page` tool is the gated canonical-document creation surface. Its
+optional `fact_review` and `related_candidates` payloads are retained in the
+create proposal: agent claims remain untrusted and `UNKNOWN`, while related
+candidates are unchecked suggestions. Only a human can confirm/edit facts and
+check, uncheck, add, or dismiss candidates; checked, still-accessible candidates
+become links on publish. Free-form workspace rules are never parsed as proof.
 
 The result includes MCP `structuredContent` and an `outputSchema`, while the
 usual text content remains available to clients that only support text. Hosts
@@ -974,7 +982,7 @@ Proposed document revisions are the review gate for agent-authored replacements.
 
 | Parameter | Type | Required |
 | --- | --- | --- |
-| `page_id` | string | yes |
+| `page_id` | string | no for list; yes for create |
 | `action` | string | no — **list** (default), **get**, **create** |
 | `proposal_id` | string | for **get** |
 | `markdown` | string | for **create** |
@@ -983,17 +991,27 @@ Proposed document revisions are the review gate for agent-authored replacements.
 
 Create stores the proposed blocks, base hash, creator identity/type, summary
 and `pending` state without changing the page, search index, live collaboration
-document, webhooks or page timestamp. A newer proposal supersedes an older
-pending one. List and get return the complete proposal record, including
-terminal state.
+document, webhooks or page timestamp. Independent create proposals under the
+same parent coexist; there is no implicit superseding. List and get return the
+complete proposal record, including terminal state.
+
+Both create and edit proposals are editable in the browser. Human edits save
+the structured block JSON used by Preview, Changes, and Publish, preserve the
+original snapshot, and retain human editor/publisher attribution. Edit
+proposals keep their original revision hash over title, body, and relevant
+metadata, so editing never rebases stale protection and a concurrent metadata
+change blocks publish. Fact review is `UNKNOWN` unless a server-trusted structured source
+or explicit human confirmation makes deterministic validation possible.
 
 Publishing and rejecting are deliberately absent from model-visible MCP
 actions. The native browser review screen requires a signed-in human session
 with page write permission. Publish snapshots the current page into history,
-checks the base hash, applies the proposed title/content atomically, refreshes
+checks the revision hash, applies the proposed title/content/metadata atomically, refreshes
 Yjs and search, emits the page event, and records human audit attribution. A
 stale base returns a conflict and leaves the proposal pending. Reject only
-changes proposal state and is idempotent.
+changes proposal state and is idempotent. A committed Publish is successful
+even if the derived search index needs healing; retrying reindexes the
+published page without duplicating its event or audit record.
 
 ### comments
 

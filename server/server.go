@@ -314,6 +314,7 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	m.HandleFunc("POST /api/pages/{id}/proposals/{proposalId}/publish", s.auth(s.sessionOnly(s.handlePublishPageChangeProposal)))
 	m.HandleFunc("POST /api/pages/{id}/proposals/{proposalId}/reject", s.auth(s.sessionOnly(s.handleRejectPageChangeProposal)))
 	m.HandleFunc("GET /api/proposals", s.auth(s.handleListAllProposals))
+	m.HandleFunc("GET /api/proposals/{proposalId}/related-candidates", s.auth(s.handleSearchProposalRelated))
 	m.HandleFunc("GET /api/proposals/{proposalId}", s.auth(s.handleGetProposal))
 	m.HandleFunc("PATCH /api/proposals/{proposalId}", s.auth(s.sessionOnly(s.handleUpdateProposal)))
 	m.HandleFunc("POST /api/proposals/{proposalId}/publish", s.auth(s.sessionOnly(s.handlePublishProposal)))

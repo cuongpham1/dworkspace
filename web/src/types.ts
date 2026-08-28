@@ -165,6 +165,7 @@ export interface PageChangeProposal {
   publishedBy?: string;
   rejectedAt?: string;
   rejectedBy?: string;
+  canEdit?: boolean;
 }
 
 export interface FactItem {
@@ -176,6 +177,8 @@ export interface FactItem {
   source?: string;
   evidence?: string;
   confirmed?: boolean;
+  verified?: boolean;
+  claimedCategory?: string;
 }
 
 export interface FactConstraint {
@@ -193,6 +196,7 @@ export interface FactGap {
 }
 
 export interface FactReview {
+  trusted: boolean;
   validation: 'deterministic' | 'unknown' | string;
   facts: FactItem[];
   constraints: FactConstraint[];

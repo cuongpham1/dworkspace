@@ -57,15 +57,20 @@ review switches from a two-column comparison to a single readable column.
   before publish there is no page, tree entry, search index row, graph edge, or
   `page.created` event. Human edits update proposal state only.
 - **Knowledge review:** facts are labelled `provided`, `derived`, `assumption`,
-  `missing`, or `unsupported`. A 3-of-5 deterministic constraint is shown as
-  `3/5` with two editable gaps. Natural-language rules without a machine-
-  readable constraint are `UNKNOWN`, never green completeness.
+  `missing`, or `unsupported`. Agent-supplied categories and constraints are
+  untrusted claims and stay `UNKNOWN`; only server-trusted evidence or an
+  explicit human browser confirmation can produce deterministic counts and
+  gaps. Free-form rules are never heuristically parsed. A confirmed 3-of-5
+  deterministic constraint is shown as `3/5` with two editable gaps.
 - **Related documents:** candidates show title, rationale, snippet, and rank.
-  Checkboxes are conservative and only selected candidates become links at
+  Agents cannot preselect them. Humans can search, add, dismiss, check, and
+  uncheck candidates. Only selected, re-authorized candidates become links at
   publish; candidates never fill fact gaps.
 - **Provenance:** the original proposal snapshot, agent creator, human editor,
-  and human publisher remain auditable. Edit proposals retain their original
-  base hash for stale protection.
+  and human publisher remain auditable. Human edits use a structure-preserving
+  block editor and save exact proposed block JSON. Edit proposals retain their
+  original revision hash over title, body, and relevant metadata for stale
+  protection; canonical metadata changes also block publication.
 - **Accessibility:** labelled dialog, native buttons, keyboard tab order,
   visible focus, status text independent of colour.
 - **Motion:** existing 100–150ms control transitions; no decorative motion.
@@ -131,4 +136,4 @@ Approval is not an MCP App action. VUS does not expose publish/reject tools,
 because this stateless bearer transport cannot establish app-call provenance
 strong enough to prevent a model from replaying one. The widget hands a human
 to the signed-in VUS browser review surface, where page permission and the
-proposal base hash are checked before the existing atomic publish path runs.
+  proposal revision hash are checked before the existing atomic publish path runs.

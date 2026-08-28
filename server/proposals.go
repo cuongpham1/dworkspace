@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -57,17 +58,20 @@ type pageChangeProposal struct {
 	PublishedBy       *string            `json:"publishedBy,omitempty"`
 	RejectedAt        *string            `json:"rejectedAt,omitempty"`
 	RejectedBy        *string            `json:"rejectedBy,omitempty"`
+	CanEdit           bool               `json:"canEdit"`
 }
 
 type factItem struct {
-	ID           string `json:"id"`
-	ConstraintID string `json:"constraintId,omitempty"`
-	Label        string `json:"label"`
-	Value        string `json:"value"`
-	Category     string `json:"category"`
-	Source       string `json:"source,omitempty"`
-	Evidence     string `json:"evidence,omitempty"`
-	Confirmed    bool   `json:"confirmed,omitempty"`
+	ID              string `json:"id"`
+	ConstraintID    string `json:"constraintId,omitempty"`
+	Label           string `json:"label"`
+	Value           string `json:"value"`
+	Category        string `json:"category"`
+	Source          string `json:"source,omitempty"`
+	Evidence        string `json:"evidence,omitempty"`
+	Confirmed       bool   `json:"confirmed,omitempty"`
+	Verified        bool   `json:"verified,omitempty"`
+	ClaimedCategory string `json:"claimedCategory,omitempty"`
 }
 
 type factConstraint struct {
@@ -85,6 +89,7 @@ type factGap struct {
 }
 
 type factReview struct {
+	Trusted     bool             `json:"trusted"`
 	Validation  string           `json:"validation"`
 	Facts       []factItem       `json:"facts"`
 	Constraints []factConstraint `json:"constraints"`
@@ -154,6 +159,9 @@ func scanProposal(sc interface{ Scan(...any) error }) (pageChangeProposal, error
 	if json.Unmarshal([]byte(facts), &p.FactReview) != nil {
 		p.FactReview = factReview{Validation: "unknown"}
 	}
+	if p.CreatorType == "agent" && !p.FactReview.Trusted {
+		p.FactReview = normalizeUntrustedFactReview(p.FactReview)
+	}
 	if json.Unmarshal([]byte(related), &p.Related) != nil {
 		p.Related = []relatedCandidate{}
 	}
@@ -196,6 +204,9 @@ func normalizeFactReview(review factReview) factReview {
 		review.Gaps = []factGap{}
 		return review
 	}
+	if !review.Trusted {
+		return normalizeUntrustedFactReview(review)
+	}
 	review.Validation = "deterministic"
 	review.Provided, review.Required = 0, 0
 	review.Gaps = []factGap{}
@@ -220,6 +231,38 @@ func normalizeFactReview(review factReview) factReview {
 			})
 		}
 	}
+	for i := range review.Facts {
+		if review.Facts[i].Category == "provided" || review.Facts[i].Category == "derived" || (review.Facts[i].Category == "assumption" && review.Facts[i].Confirmed) {
+			review.Facts[i].Verified = true
+		}
+	}
+	return review
+}
+
+// normalizeUntrustedFactReview retains an agent's useful claims for human
+// review, but deliberately discards every value that could look like a server
+// validation result. Agent JSON is content, not evidence or a rule authority.
+func normalizeUntrustedFactReview(review factReview) factReview {
+	if review.Facts == nil {
+		review.Facts = []factItem{}
+	}
+	if review.Constraints == nil {
+		review.Constraints = []factConstraint{}
+	}
+	for i := range review.Facts {
+		fact := &review.Facts[i]
+		fact.ClaimedCategory = fact.Category
+		if fact.Category == "provided" || fact.Category == "derived" || fact.Category == "assumption" {
+			fact.Category = "assumption"
+		}
+		fact.Confirmed = false
+		fact.Verified = false
+	}
+	review.Trusted = false
+	review.Validation = "unknown"
+	review.Provided = 0
+	review.Required = 0
+	review.Gaps = []factGap{}
 	return review
 }
 
@@ -236,6 +279,21 @@ func proposalSnapshot(input proposalInput) (string, error) {
 func pageContentHash(title, content string) string {
 	h := sha256.Sum256([]byte(title + "\x00" + content))
 	return hex.EncodeToString(h[:])
+}
+
+func pageRevisionHash(title, content, pageType, icon, cover, description, tags, props string) string {
+	h := sha256.Sum256([]byte(strings.Join([]string{title, content, pageType, icon, cover, description, tags, props}, "\x00")))
+	return "revision:" + hex.EncodeToString(h[:])
+}
+
+func validProposalContent(content string) bool {
+	var blocks []json.RawMessage
+	return json.Unmarshal([]byte(content), &blocks) == nil && blocks != nil
+}
+
+func validProposalProps(props string) bool {
+	var value map[string]any
+	return json.Unmarshal([]byte(props), &value) == nil && value != nil
 }
 
 func proposalCreatorType(u *user) string {
@@ -266,8 +324,8 @@ func (s *Server) createPageChangeProposal(u *user, pageID, proposedContent, prop
 	}
 	defer tx.Rollback()
 
-	var title, content string
-	if err := tx.QueryRow(`SELECT title, content FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&title, &content); err == sql.ErrNoRows {
+	var title, content, pageType, icon, cover, description, tags, props string
+	if err := tx.QueryRow(`SELECT title, content, type, icon, cover, description, tags, props FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&title, &content, &pageType, &icon, &cover, &description, &tags, &props); err == sql.ErrNoRows {
 		return pageChangeProposal{}, fmt.Errorf("page %q not found", pageID)
 	} else if err != nil {
 		return pageChangeProposal{}, err
@@ -278,8 +336,22 @@ func (s *Server) createPageChangeProposal(u *user, pageID, proposedContent, prop
 	if len([]rune(proposedTitle)) > maxTitleLen {
 		return pageChangeProposal{}, fmt.Errorf("title is too long")
 	}
-	input := proposalInput{PageID: pageID, Title: proposedTitle, Content: proposedContent, Type: "doc",
-		Props: "{}", Summary: summary, FactReview: factReview{Validation: "unknown"}}
+	if pageType == "" {
+		pageType = "doc"
+	}
+	if props == "" {
+		props = "{}"
+	}
+	if tags == "" {
+		tags = "[]"
+	}
+	var proposedTags []string
+	if json.Unmarshal([]byte(tags), &proposedTags) != nil {
+		proposedTags = []string{}
+	}
+	input := proposalInput{PageID: pageID, Title: proposedTitle, Content: proposedContent, Type: pageType,
+		Icon: icon, Cover: cover, Description: description, Tags: proposedTags, Props: props, Summary: summary,
+		FactReview: factReview{Validation: "unknown"}}
 	snapshot, err := proposalSnapshot(input)
 	if err != nil {
 		return pageChangeProposal{}, err
@@ -292,10 +364,10 @@ func (s *Server) createPageChangeProposal(u *user, pageID, proposedContent, prop
 		return pageChangeProposal{}, err
 	}
 	if _, err := tx.Exec(`INSERT INTO page_change_proposals
-		(id, page_id, proposal_kind, proposed_type, proposed_props, base_hash, proposed_content, proposed_title,
+		(id, page_id, proposal_kind, proposed_type, proposed_icon, proposed_cover, proposed_description, proposed_tags, proposed_props, base_hash, proposed_content, proposed_title,
 		 creator_id, creator_type, creator_name, created_at, updated_at, status, summary, fact_review, original_snapshot)
-		VALUES (?, ?, 'edit', 'doc', '{}', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, pageID, pageContentHash(title, content), proposedContent, proposedTitle,
+		VALUES (?, ?, 'edit', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, pageID, pageType, icon, cover, description, string(normalizeTags(proposedTags)), props, pageRevisionHash(title, content, pageType, icon, cover, description, tags, props), proposedContent, proposedTitle,
 		u.ID, creatorType, u.Name, ts, ts, proposalStatusPending, summary, `{ "validation": "unknown", "facts": [], "constraints": [], "provided": 0, "required": 0, "gaps": [] }`, snapshot); err != nil {
 		return pageChangeProposal{}, err
 	}
@@ -303,8 +375,8 @@ func (s *Server) createPageChangeProposal(u *user, pageID, proposedContent, prop
 		return pageChangeProposal{}, err
 	}
 	return pageChangeProposal{
-		ID: id, PageID: pageID, Kind: proposalKindEdit, ProposedType: "doc", ProposedProps: json.RawMessage(`{}`),
-		BaseHash:        pageContentHash(title, content),
+		ID: id, PageID: pageID, Kind: proposalKindEdit, ProposedType: pageType, ProposedIcon: icon, ProposedCover: cover, ProposedDesc: description, ProposedTags: proposedTags, ProposedProps: json.RawMessage(props),
+		BaseHash:        pageRevisionHash(title, content, pageType, icon, cover, description, tags, props),
 		ProposedContent: json.RawMessage(proposedContent), ProposedTitle: proposedTitle,
 		CreatorID: u.ID, CreatorType: creatorType, CreatorName: u.Name,
 		CreatedAt: ts, UpdatedAt: ts, Status: proposalStatusPending, Summary: summary,
@@ -319,7 +391,7 @@ func (s *Server) suggestRelatedCandidates(u *user, workspaceID, title string) ([
 	}
 	rows, err := s.db.Query(`SELECT id, title, snippet FROM pages
 		WHERE workspace_id = ? AND trashed_at IS NULL AND title LIKE ?
-		ORDER BY updated_at DESC LIMIT 10`, workspaceID, "%"+term+"%")
+		ORDER BY updated_at DESC LIMIT 100`, workspaceID, "%"+term+"%")
 	if err != nil {
 		return nil, err
 	}
@@ -340,9 +412,12 @@ func (s *Server) suggestRelatedCandidates(u *user, workspaceID, title string) ([
 		if !s.canRead(u.ID, candidates[i].PageID) {
 			continue
 		}
-		candidates[i].Rank = i + 1
+		candidates[i].Rank = len(visible) + 1
 		candidates[i].Rationale = "Title overlap in the destination workspace; relevance is a suggestion, not a fact."
 		visible = append(visible, candidates[i])
+		if len(visible) == 10 {
+			break
+		}
 	}
 	return visible, nil
 }
@@ -357,7 +432,7 @@ func (s *Server) createPageProposal(u *user, input proposalInput) (pageChangePro
 	if input.Props == "" {
 		input.Props = "{}"
 	}
-	if !json.Valid([]byte(input.Content)) || !json.Valid([]byte(input.Props)) {
+	if !validProposalContent(input.Content) || !validProposalProps(input.Props) {
 		return pageChangeProposal{}, fmt.Errorf("proposal content and properties must be valid JSON")
 	}
 	if strings.TrimSpace(input.Title) == "" {
@@ -382,7 +457,7 @@ func (s *Server) createPageProposal(u *user, input proposalInput) (pageChangePro
 			return pageChangeProposal{}, fmt.Errorf("target parent page not found")
 		}
 	}
-	input.FactReview = normalizeFactReview(input.FactReview)
+	input.FactReview = normalizeUntrustedFactReview(input.FactReview)
 	if input.RelatedCandidates == nil {
 		var err error
 		input.RelatedCandidates, err = s.suggestRelatedCandidates(u, input.WorkspaceID, input.Title)
@@ -393,9 +468,7 @@ func (s *Server) createPageProposal(u *user, input proposalInput) (pageChangePro
 	if input.RelatedCandidates == nil {
 		input.RelatedCandidates = []relatedCandidate{}
 	}
-	if input.SelectedRelatedIDs == nil {
-		input.SelectedRelatedIDs = []string{}
-	}
+	input.SelectedRelatedIDs = []string{}
 	if input.Tags == nil {
 		input.Tags = []string{}
 	}
@@ -409,21 +482,25 @@ func (s *Server) createPageProposal(u *user, input proposalInput) (pageChangePro
 		if candidate.PageID == "" || !s.canRead(u.ID, candidate.PageID) || s.pageWorkspace(candidate.PageID) != input.WorkspaceID {
 			return pageChangeProposal{}, fmt.Errorf("related document %q is not accessible in the target workspace", candidate.PageID)
 		}
-		allowed[candidate.PageID] = true
-		if candidate.Rank == 0 {
-			candidate.Rank = i + 1
+		if allowed[candidate.PageID] {
+			return pageChangeProposal{}, fmt.Errorf("related document %q was listed more than once", candidate.PageID)
 		}
+		allowed[candidate.PageID] = true
+		var title, snippet string
+		if err := s.db.QueryRow(`SELECT title, snippet FROM pages WHERE id = ? AND trashed_at IS NULL`, candidate.PageID).Scan(&title, &snippet); err != nil {
+			return pageChangeProposal{}, fmt.Errorf("related document %q is not available", candidate.PageID)
+		}
+		candidate.Title = title
+		candidate.Snippet = snippet
+		candidate.Rank = i + 1
 		if candidate.Rationale == "" {
 			candidate.Rationale = "Suggested by the agent; relevance is not evidence."
-		}
-	}
-	for _, id := range input.SelectedRelatedIDs {
-		if !allowed[id] {
-			return pageChangeProposal{}, fmt.Errorf("selected related document %q is not a proposal candidate", id)
+		} else {
+			candidate.Rationale = "Agent rationale (unverified): " + candidate.Rationale
 		}
 	}
 	for i := range input.RelatedCandidates {
-		input.RelatedCandidates[i].Selected = containsString(input.SelectedRelatedIDs, input.RelatedCandidates[i].PageID)
+		input.RelatedCandidates[i].Selected = false
 	}
 	snapshot, err := proposalSnapshot(input)
 	if err != nil {
@@ -448,11 +525,6 @@ func (s *Server) createPageProposal(u *user, input proposalInput) (pageChangePro
 		return pageChangeProposal{}, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(`UPDATE page_change_proposals SET status = ?, updated_at = ?
-		WHERE proposal_kind = 'create' AND target_workspace_id = ? AND target_parent_id IS ? AND status = ?`,
-		proposalStatusSuperseded, ts, input.WorkspaceID, nullIfEmptyPtr(input.ParentID), proposalStatusPending); err != nil {
-		return pageChangeProposal{}, err
-	}
 	_, err = tx.Exec(`INSERT INTO page_change_proposals
 		(id, page_id, proposal_kind, target_parent_id, target_workspace_id, proposed_type, proposed_icon,
 		 proposed_cover, proposed_description, proposed_tags, proposed_props, base_hash, proposed_content,
@@ -540,7 +612,13 @@ func (s *Server) handleListPageChangeProposals(w http.ResponseWriter, r *http.Re
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, proposals)
+	visible := make([]pageChangeProposal, 0, len(proposals))
+	for _, proposal := range proposals {
+		if current, ok := s.visibleProposal(requestUser(r), proposal); ok {
+			visible = append(visible, current)
+		}
+	}
+	writeJSON(w, visible)
 }
 
 func (s *Server) handleGetPageChangeProposal(w http.ResponseWriter, r *http.Request) {
@@ -558,7 +636,12 @@ func (s *Server) handleGetPageChangeProposal(w http.ResponseWriter, r *http.Requ
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, p)
+	visible, ok := s.visibleProposal(requestUser(r), p)
+	if !ok {
+		httpError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+	writeJSON(w, visible)
 }
 
 func (s *Server) handleCreatePageChangeProposal(w http.ResponseWriter, r *http.Request) {
@@ -667,7 +750,11 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 		return pageChangeProposal{}, fmt.Errorf("load proposal in transaction: %w", err)
 	}
 	if p.Status == proposalStatusPublished {
-		return p, tx.Commit()
+		if err := tx.Commit(); err != nil {
+			return pageChangeProposal{}, err
+		}
+		s.healProposalIndex(p.PageID)
+		return p, nil
 	}
 	if p.Status != proposalStatusPending {
 		return pageChangeProposal{}, fmt.Errorf("proposal is %s and cannot be published", p.Status)
@@ -677,6 +764,9 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 	}
 	ts := now()
 	if p.Kind == proposalKindCreate {
+		if err := s.validateCreatePublishTx(tx, u, p); err != nil {
+			return pageChangeProposal{}, err
+		}
 		content, err := appendRelatedPageLinks(p.ProposedContent, p.SelectedRelated)
 		if err != nil {
 			return pageChangeProposal{}, err
@@ -698,13 +788,18 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 		}
 		p.PageID, p.ProposedContent = pageID, json.RawMessage(content)
 	} else {
-		var title, content string
-		if err := tx.QueryRow(`SELECT title, content FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&title, &content); err == sql.ErrNoRows {
+		if err := s.validateEditPublishTx(tx, u, pageID); err != nil {
+			return pageChangeProposal{}, err
+		}
+		var title, content, pageType, icon, cover, description, tags, props string
+		if err := tx.QueryRow(`SELECT title, content, type, icon, cover, description, tags, props FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&title, &content, &pageType, &icon, &cover, &description, &tags, &props); err == sql.ErrNoRows {
 			return pageChangeProposal{}, fmt.Errorf("page %q not found", pageID)
 		} else if err != nil {
 			return pageChangeProposal{}, err
 		}
-		if pageContentHash(title, content) != p.BaseHash {
+		currentHash := pageRevisionHash(title, content, pageType, icon, cover, description, tags, props)
+		legacyHash := strings.HasPrefix(p.BaseHash, "legacy-content:") && pageContentHash(title, content) == strings.TrimPrefix(p.BaseHash, "legacy-content:")
+		if currentHash != p.BaseHash && !legacyHash {
 			return pageChangeProposal{}, errProposalConflict
 		}
 		if _, err := tx.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)`, newID(), pageID, ts, u.ID, u.Name, title, content); err != nil {
@@ -713,7 +808,11 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 		if _, err := tx.Exec(`DELETE FROM page_revisions WHERE page_id = ? AND id NOT IN (SELECT id FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC LIMIT ?)`, pageID, pageID, revisionKeep); err != nil {
 			return pageChangeProposal{}, err
 		}
-		if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ?, icon = ?, cover = ?, description = ?, tags = ?, props = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, p.ProposedIcon, p.ProposedCover, p.ProposedDesc, string(normalizeTags(p.ProposedTags)), string(p.ProposedProps), pageID); err != nil {
+		if legacyHash {
+			if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, pageID); err != nil {
+				return pageChangeProposal{}, err
+			}
+		} else if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ?, icon = ?, cover = ?, description = ?, tags = ?, props = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, p.ProposedIcon, p.ProposedCover, p.ProposedDesc, string(normalizeTags(p.ProposedTags)), string(p.ProposedProps), pageID); err != nil {
 			return pageChangeProposal{}, err
 		}
 		if result, err := tx.Exec(`UPDATE page_change_proposals SET status = ?, updated_at = ?, published_at = ?, published_by = ? WHERE id = ? AND page_id = ? AND status = ?`, proposalStatusPublished, ts, ts, u.ID, proposalID, pageID, proposalStatusPending); err != nil {
@@ -726,9 +825,7 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 		return pageChangeProposal{}, err
 	}
 	p.Status, p.UpdatedAt, p.PublishedAt, p.PublishedBy = proposalStatusPublished, ts, &ts, &u.ID
-	if err := s.reindexPage(pageID); err != nil {
-		return pageChangeProposal{}, fmt.Errorf("reindex published page: %w", err)
-	}
+	s.healProposalIndex(pageID)
 	if p.Kind == proposalKindEdit {
 		s.resetYjsDoc(pageID)
 		s.rowChanged(pageID)
@@ -740,6 +837,90 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 	s.pagesChanged()
 	s.audit("human", u.ID, u.Name, "proposal_published", pageID, s.pageWorkspace(pageID), proposalID)
 	return p, nil
+}
+
+func (s *Server) validateEditPublishTx(tx *sql.Tx, u *user, pageID string) error {
+	var workspace string
+	if err := tx.QueryRow(`SELECT workspace_id FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&workspace); err != nil {
+		return fmt.Errorf("page %q not found", pageID)
+	}
+	var role string
+	if err := tx.QueryRow(`SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?`, workspace, u.ID).Scan(&role); err != nil || role == "viewer" {
+		return fmt.Errorf("forbidden")
+	}
+	if role != "admin" {
+		var blocked int
+		if err := tx.QueryRow(`WITH RECURSIVE ancestors(id, parent_id, visibility, owner_id) AS (
+			SELECT id, parent_id, visibility, owner_id FROM pages WHERE id = ?
+			UNION SELECT p.id, p.parent_id, p.visibility, p.owner_id FROM pages p JOIN ancestors a ON p.id = a.parent_id
+		) SELECT COUNT(*) FROM ancestors WHERE visibility = 'private' AND owner_id != ?`, pageID, u.ID).Scan(&blocked); err != nil || blocked > 0 {
+			return fmt.Errorf("forbidden")
+		}
+	}
+	return nil
+}
+
+func (s *Server) healProposalIndex(pageID string) {
+	if pageID == "" {
+		return
+	}
+	if err := s.reindexPage(pageID); err != nil {
+		log.Printf("proposal publish committed; index healing deferred for page %s: %v", pageID, err)
+	}
+}
+
+func (s *Server) validateCreatePublishTx(tx *sql.Tx, u *user, p pageChangeProposal) error {
+	var role string
+	if err := tx.QueryRow(`SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?`, p.TargetWorkspace, u.ID).Scan(&role); err != nil || role == "viewer" {
+		return fmt.Errorf("forbidden")
+	}
+	if p.TargetParentID != nil {
+		var workspace string
+		var trashed sql.NullString
+		if err := tx.QueryRow(`SELECT workspace_id, trashed_at FROM pages WHERE id = ?`, *p.TargetParentID).Scan(&workspace, &trashed); err != nil || trashed.Valid || workspace != p.TargetWorkspace {
+			return fmt.Errorf("target parent page not found")
+		}
+		var parentRole string
+		if err := tx.QueryRow(`SELECT role FROM workspace_members WHERE workspace_id = ? AND user_id = ?`, workspace, u.ID).Scan(&parentRole); err != nil || parentRole == "viewer" {
+			return fmt.Errorf("target parent page not found")
+		}
+		if parentRole != "admin" {
+			var blocked int
+			if err := tx.QueryRow(`WITH RECURSIVE ancestors(id, parent_id, visibility, owner_id) AS (
+				SELECT id, parent_id, visibility, owner_id FROM pages WHERE id = ?
+				UNION SELECT p.id, p.parent_id, p.visibility, p.owner_id FROM pages p JOIN ancestors a ON p.id = a.parent_id
+			) SELECT COUNT(*) FROM ancestors WHERE visibility = 'private' AND owner_id != ?`, *p.TargetParentID, u.ID).Scan(&blocked); err != nil || blocked > 0 {
+				return fmt.Errorf("target parent page not found")
+			}
+		}
+	}
+	candidateSelections := map[string]bool{}
+	for _, candidate := range p.Related {
+		if candidate.Selected {
+			candidateSelections[candidate.PageID] = true
+		}
+	}
+	for _, candidateID := range p.SelectedRelated {
+		if !candidateSelections[candidateID] {
+			return fmt.Errorf("related document %q was not selected by a human reviewer", candidateID)
+		}
+		var workspace, owner, visibility string
+		var trashed sql.NullString
+		if err := tx.QueryRow(`SELECT workspace_id, owner_id, visibility, trashed_at FROM pages WHERE id = ?`, candidateID).Scan(&workspace, &owner, &visibility, &trashed); err != nil || trashed.Valid || workspace != p.TargetWorkspace {
+			return fmt.Errorf("related document %q is not accessible", candidateID)
+		}
+		if visibility == "private" && owner != u.ID && role != "admin" {
+			return fmt.Errorf("related document %q is not accessible", candidateID)
+		}
+		var blocked int
+		if err := tx.QueryRow(`WITH RECURSIVE ancestors(id, parent_id, visibility, owner_id) AS (
+			SELECT id, parent_id, visibility, owner_id FROM pages WHERE id = ?
+			UNION SELECT p.id, p.parent_id, p.visibility, p.owner_id FROM pages p JOIN ancestors a ON p.id = a.parent_id
+		) SELECT COUNT(*) FROM ancestors WHERE visibility = 'private' AND owner_id != ?`, candidateID, u.ID).Scan(&blocked); err != nil || (blocked > 0 && role != "admin") {
+			return fmt.Errorf("related document %q is not accessible", candidateID)
+		}
+	}
+	return nil
 }
 
 func (s *Server) handlePublishPageChangeProposal(w http.ResponseWriter, r *http.Request) {
@@ -761,7 +942,11 @@ func (s *Server) handlePublishPageChangeProposal(w http.ResponseWriter, r *http.
 		httpError(w, code, err.Error())
 		return
 	}
-	writeJSON(w, p)
+	if visible, ok := s.visibleProposal(requestUser(r), p); ok {
+		writeJSON(w, visible)
+		return
+	}
+	httpError(w, http.StatusNotFound, "proposal not found")
 }
 
 func (s *Server) handleRejectPageChangeProposal(w http.ResponseWriter, r *http.Request) {
@@ -782,7 +967,11 @@ func (s *Server) handleRejectPageChangeProposal(w http.ResponseWriter, r *http.R
 		return
 	}
 	if p.Status == proposalStatusRejected {
-		writeJSON(w, p)
+		if visible, ok := s.visibleProposal(u, p); ok {
+			writeJSON(w, visible)
+			return
+		}
+		httpError(w, http.StatusNotFound, "proposal not found")
 		return
 	}
 	if p.Status != proposalStatusPending {
@@ -805,14 +994,18 @@ func (s *Server) handleRejectPageChangeProposal(w http.ResponseWriter, r *http.R
 	p.RejectedAt = &ts
 	p.RejectedBy = &u.ID
 	s.audit("human", u.ID, u.Name, "proposal_rejected", pageID, s.pageWorkspace(pageID), proposalID)
-	writeJSON(w, p)
+	if visible, ok := s.visibleProposal(u, p); ok {
+		writeJSON(w, visible)
+		return
+	}
+	httpError(w, http.StatusNotFound, "proposal not found")
 }
 
 func proposalWorkspace(s *Server, p pageChangeProposal) string {
-	if p.TargetWorkspace != "" {
-		return p.TargetWorkspace
+	if p.PageID != "" {
+		return s.pageWorkspace(p.PageID)
 	}
-	return s.pageWorkspace(p.PageID)
+	return p.TargetWorkspace
 }
 
 func (s *Server) proposalCanRead(u *user, p pageChangeProposal) bool {
@@ -823,10 +1016,70 @@ func (s *Server) proposalCanRead(u *user, p pageChangeProposal) bool {
 	if ws == "" || !s.isMember(u.ID, ws) || !s.credentialMayEnter(u, ws) {
 		return false
 	}
-	if p.Kind == proposalKindEdit {
+	if p.PageID != "" {
 		return s.canRead(u.ID, p.PageID)
 	}
 	return p.TargetParentID == nil || s.canRead(u.ID, *p.TargetParentID)
+}
+
+func (s *Server) visibleProposal(u *user, p pageChangeProposal) (pageChangeProposal, bool) {
+	if !s.proposalCanRead(u, p) {
+		return pageChangeProposal{}, false
+	}
+	visible := make([]relatedCandidate, 0, len(p.Related))
+	selected := make([]string, 0, len(p.SelectedRelated))
+	for _, candidate := range p.Related {
+		if candidate.PageID == "" || s.pageWorkspace(candidate.PageID) != proposalWorkspace(s, p) || !s.canRead(u.ID, candidate.PageID) {
+			continue
+		}
+		visible = append(visible, candidate)
+		if candidate.Selected {
+			selected = append(selected, candidate.PageID)
+		}
+	}
+	p.Related = visible
+	p.SelectedRelated = selected
+	p.OriginalSnapshot = s.visibleProposalSnapshot(u, p)
+	p.CanEdit = s.proposalCanWrite(u, p)
+	return p, true
+}
+
+func (s *Server) visibleProposalSnapshot(u *user, p pageChangeProposal) json.RawMessage {
+	if len(p.OriginalSnapshot) == 0 {
+		return p.OriginalSnapshot
+	}
+	var snapshot map[string]any
+	if json.Unmarshal(p.OriginalSnapshot, &snapshot) != nil {
+		return json.RawMessage(`{}`)
+	}
+	visibleIDs := map[string]bool{}
+	visibleCandidates := []any{}
+	if candidates, ok := snapshot["relatedCandidates"].([]any); ok {
+		for _, value := range candidates {
+			candidate, ok := value.(map[string]any)
+			pageID, pageOK := candidate["pageId"].(string)
+			if !ok || !pageOK || pageID == "" || s.pageWorkspace(pageID) != proposalWorkspace(s, p) || !s.canRead(u.ID, pageID) {
+				continue
+			}
+			visibleIDs[pageID] = true
+			visibleCandidates = append(visibleCandidates, candidate)
+		}
+	}
+	snapshot["relatedCandidates"] = visibleCandidates
+	selected := []any{}
+	if ids, ok := snapshot["selectedRelatedIds"].([]any); ok {
+		for _, value := range ids {
+			if id, ok := value.(string); ok && visibleIDs[id] {
+				selected = append(selected, id)
+			}
+		}
+	}
+	snapshot["selectedRelatedIds"] = selected
+	result, err := json.Marshal(snapshot)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return result
 }
 
 func (s *Server) proposalCanWrite(u *user, p pageChangeProposal) bool {
@@ -872,8 +1125,8 @@ func (s *Server) handleListAllProposals(w http.ResponseWriter, r *http.Request) 
 	}
 	proposals := make([]pageChangeProposal, 0, len(all))
 	for _, p := range all {
-		if s.proposalCanRead(requestUser(r), p) {
-			proposals = append(proposals, p)
+		if visible, ok := s.visibleProposal(requestUser(r), p); ok {
+			proposals = append(proposals, visible)
 		}
 	}
 	writeJSON(w, proposals)
@@ -889,11 +1142,35 @@ func (s *Server) handleGetProposal(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if !s.proposalCanRead(requestUser(r), p) {
+	visible, ok := s.visibleProposal(requestUser(r), p)
+	if !ok {
 		httpError(w, http.StatusNotFound, "proposal not found")
 		return
 	}
-	writeJSON(w, p)
+	writeJSON(w, visible)
+}
+
+func (s *Server) handleSearchProposalRelated(w http.ResponseWriter, r *http.Request) {
+	p, err := s.proposalByIDAny(r.PathValue("proposalId"))
+	if err == sql.ErrNoRows {
+		httpError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	u := requestUser(r)
+	if !s.proposalCanRead(u, p) {
+		httpError(w, http.StatusNotFound, "proposal not found")
+		return
+	}
+	candidates, err := s.suggestRelatedCandidates(u, proposalWorkspace(s, p), r.URL.Query().Get("q"))
+	if err != nil {
+		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, candidates)
 }
 
 func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
@@ -927,6 +1204,7 @@ func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
 		FactReview          json.RawMessage     `json:"factReview"`
 		RelatedCandidates   *[]relatedCandidate `json:"relatedCandidates"`
 		SelectedRelatedIDs  *[]string           `json:"selectedRelatedIds"`
+		UpdatedAt           *string             `json:"updatedAt"`
 	}
 	if err := decodeJSON(w, r, &body); err != nil {
 		httpError(w, http.StatusBadRequest, "invalid JSON")
@@ -934,7 +1212,7 @@ func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
 	}
 	content := string(p.ProposedContent)
 	if len(body.Content) > 0 {
-		if !json.Valid(body.Content) {
+		if !validProposalContent(string(body.Content)) {
 			httpError(w, http.StatusBadRequest, "content is not valid JSON")
 			return
 		}
@@ -977,7 +1255,7 @@ func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
 		tags = *body.ProposedTags
 	}
 	if len(body.ProposedProps) > 0 {
-		if !json.Valid(body.ProposedProps) {
+		if !validProposalProps(string(body.ProposedProps)) {
 			httpError(w, http.StatusBadRequest, "proposedProps is not valid JSON")
 			return
 		}
@@ -989,6 +1267,7 @@ func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
 			httpError(w, http.StatusBadRequest, "factReview must be a JSON object")
 			return
 		}
+		review.Trusted = true
 	}
 	review = normalizeFactReview(review)
 	related := p.Related
@@ -1006,23 +1285,49 @@ func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
 			httpError(w, http.StatusBadRequest, "related document is not accessible in the proposal workspace")
 			return
 		}
+		if allowed[candidate.PageID] {
+			httpError(w, http.StatusBadRequest, "related document was listed more than once")
+			return
+		}
 		allowed[candidate.PageID] = true
-		candidate.Selected = containsString(selected, candidate.PageID)
+		var canonicalTitle, canonicalSnippet string
+		if err := s.db.QueryRow(`SELECT title, snippet FROM pages WHERE id = ? AND trashed_at IS NULL`, candidate.PageID).Scan(&canonicalTitle, &canonicalSnippet); err != nil {
+			httpError(w, http.StatusBadRequest, "related document is not available")
+			return
+		}
+		candidate.Title = canonicalTitle
+		candidate.Snippet = canonicalSnippet
+		candidate.Rank = i + 1
+		candidate.Selected = !candidate.Dismissed && containsString(selected, candidate.PageID)
 	}
 	for _, id := range selected {
 		if !allowed[id] {
 			httpError(w, http.StatusBadRequest, "selected related document is not a candidate")
 			return
 		}
+		for _, candidate := range related {
+			if candidate.PageID == id && candidate.Dismissed {
+				httpError(w, http.StatusBadRequest, "dismissed related document cannot be selected")
+				return
+			}
+		}
 	}
 	facts, _ := json.Marshal(review)
 	candidateJSON, _ := json.Marshal(related)
 	selectedJSON, _ := json.Marshal(selected)
 	ts := now()
-	_, err = s.db.Exec(`UPDATE page_change_proposals SET proposed_content = ?, proposed_title = ?, proposed_icon = ?, proposed_cover = ?, proposed_description = ?, proposed_tags = ?, proposed_props = ?, fact_review = ?, related_candidates = ?, selected_related_ids = ?, updated_at = ?, last_human_editor = ?, last_human_edited_at = ? WHERE id = ? AND status = ?`,
-		content, title, icon, cover, description, string(normalizeTags(tags)), props, string(facts), string(candidateJSON), string(selectedJSON), ts, u.ID, ts, p.ID, proposalStatusPending)
+	expectedUpdatedAt := p.UpdatedAt
+	if body.UpdatedAt != nil {
+		expectedUpdatedAt = *body.UpdatedAt
+	}
+	result, err := s.db.Exec(`UPDATE page_change_proposals SET proposed_content = ?, proposed_title = ?, proposed_icon = ?, proposed_cover = ?, proposed_description = ?, proposed_tags = ?, proposed_props = ?, fact_review = ?, related_candidates = ?, selected_related_ids = ?, updated_at = ?, last_human_editor = ?, last_human_edited_at = ? WHERE id = ? AND status = ? AND updated_at = ?`,
+		content, title, icon, cover, description, string(normalizeTags(tags)), props, string(facts), string(candidateJSON), string(selectedJSON), ts, u.ID, ts, p.ID, proposalStatusPending, expectedUpdatedAt)
 	if err != nil {
 		httpError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if n, _ := result.RowsAffected(); n != 1 {
+		httpErrorCode(w, http.StatusConflict, "proposal_conflict", "proposal changed while it was being edited")
 		return
 	}
 	ws := proposalWorkspace(s, p)
@@ -1032,7 +1337,11 @@ func (s *Server) handleUpdateProposal(w http.ResponseWriter, r *http.Request) {
 		httpError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, updated)
+	if visible, ok := s.visibleProposal(u, updated); ok {
+		writeJSON(w, visible)
+		return
+	}
+	httpError(w, http.StatusNotFound, "proposal not found")
 }
 
 func (s *Server) handlePublishProposal(w http.ResponseWriter, r *http.Request) {
@@ -1062,7 +1371,11 @@ func (s *Server) handlePublishProposal(w http.ResponseWriter, r *http.Request) {
 		httpError(w, code, err.Error())
 		return
 	}
-	writeJSON(w, updated)
+	if visible, ok := s.visibleProposal(requestUser(r), updated); ok {
+		writeJSON(w, visible)
+		return
+	}
+	httpError(w, http.StatusNotFound, "proposal not found")
 }
 
 func (s *Server) rejectPageChangeProposal(pageID, proposalID string, u *user) (pageChangeProposal, error) {
@@ -1111,15 +1424,19 @@ func (s *Server) handleRejectProposal(w http.ResponseWriter, r *http.Request) {
 		httpError(w, code, err.Error())
 		return
 	}
-	writeJSON(w, p)
+	if visible, ok := s.visibleProposal(requestUser(r), p); ok {
+		writeJSON(w, visible)
+		return
+	}
+	httpError(w, http.StatusNotFound, "proposal not found")
 }
 
 func (s *Server) mcpProposalPayload(p pageChangeProposal, message string) (map[string]any, error) {
 	canonical := map[string]any{"title": "", "content": []any{}, "hash": ""}
-	var title, content string
+	var title, content, pageType, icon, cover, description, tags, props string
 	err := sql.ErrNoRows
 	if p.PageID != "" {
-		err = s.db.QueryRow(`SELECT title, content FROM pages WHERE id = ?`, p.PageID).Scan(&title, &content)
+		err = s.db.QueryRow(`SELECT title, content, type, icon, cover, description, tags, props FROM pages WHERE id = ?`, p.PageID).Scan(&title, &content, &pageType, &icon, &cover, &description, &tags, &props)
 	}
 	if err == nil {
 		var canonicalContent any
@@ -1128,7 +1445,7 @@ func (s *Server) mcpProposalPayload(p pageChangeProposal, message string) (map[s
 		}
 		canonical = map[string]any{
 			"title": title, "content": canonicalContent,
-			"hash": pageContentHash(title, content),
+			"hash": pageRevisionHash(title, content, pageType, icon, cover, description, tags, props),
 		}
 	} else if err != sql.ErrNoRows {
 		return nil, err
@@ -1187,8 +1504,8 @@ func (s *Server) mcpProposals(u *user, pageID, action, proposalID, markdown, tit
 			rows.Close()
 			list := make([]pageChangeProposal, 0, len(all))
 			for _, p := range all {
-				if s.proposalCanRead(u, p) {
-					list = append(list, p)
+				if visible, ok := s.visibleProposal(u, p); ok {
+					list = append(list, visible)
 				}
 			}
 			b, err := json.Marshal(map[string]any{"proposals": list})
@@ -1198,7 +1515,13 @@ func (s *Server) mcpProposals(u *user, pageID, action, proposalID, markdown, tit
 		if err != nil {
 			return "", err
 		}
-		b, err := json.Marshal(map[string]any{"proposals": list})
+		visible := make([]pageChangeProposal, 0, len(list))
+		for _, proposal := range list {
+			if current, ok := s.visibleProposal(u, proposal); ok {
+				visible = append(visible, current)
+			}
+		}
+		b, err := json.Marshal(map[string]any{"proposals": visible})
 		return string(b), err
 	case "get":
 		if proposalID == "" {
@@ -1217,13 +1540,20 @@ func (s *Server) mcpProposals(u *user, pageID, action, proposalID, markdown, tit
 		if err != nil {
 			return "", err
 		}
-		payload, err := s.mcpProposalPayload(p, "Proposed revision details")
+		visible, ok := s.visibleProposal(u, p)
+		if !ok {
+			return "", fmt.Errorf("proposal %q not found", proposalID)
+		}
+		payload, err := s.mcpProposalPayload(visible, "Proposed revision details")
 		if err != nil {
 			return "", err
 		}
 		b, err := json.Marshal(payload)
 		return string(b), err
 	case "create":
+		if pageID == "" {
+			return "", fmt.Errorf("page_id is required for action=create")
+		}
 		if strings.TrimSpace(markdown) == "" {
 			return "", fmt.Errorf("markdown is required for action=create")
 		}
