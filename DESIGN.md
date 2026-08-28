@@ -46,11 +46,26 @@ review switches from a two-column comparison to a single readable column.
 
 ### Proposal review modal
 
-- **Structure:** modal overlay → dialog header/status → metadata → tabbed
-  preview/diff surface → action cluster.
+- **Structure:** modal overlay → dialog header/status → proposal list → wide
+  review workspace. The workspace has an editable document column and a
+  Knowledge Review pane with deterministic fact gaps and conservative related
+  document candidates.
 - **Variants:** pending, published, rejected; preview and changes-only views.
 - **Spacing:** 8px clusters, 16px panel padding, 24px dialog padding.
 - **States:** loading, empty, pending, published, rejected, conflict/error.
+- **Create state:** `New document · Will be created on Publish` is explicit;
+  before publish there is no page, tree entry, search index row, graph edge, or
+  `page.created` event. Human edits update proposal state only.
+- **Knowledge review:** facts are labelled `provided`, `derived`, `assumption`,
+  `missing`, or `unsupported`. A 3-of-5 deterministic constraint is shown as
+  `3/5` with two editable gaps. Natural-language rules without a machine-
+  readable constraint are `UNKNOWN`, never green completeness.
+- **Related documents:** candidates show title, rationale, snippet, and rank.
+  Checkboxes are conservative and only selected candidates become links at
+  publish; candidates never fill fact gaps.
+- **Provenance:** the original proposal snapshot, agent creator, human editor,
+  and human publisher remain auditable. Edit proposals retain their original
+  base hash for stale protection.
 - **Accessibility:** labelled dialog, native buttons, keyboard tab order,
   visible focus, status text independent of colour.
 - **Motion:** existing 100–150ms control transitions; no decorative motion.
@@ -106,6 +121,11 @@ resource metadata declares empty CSP domains and requests a visible host
 border. This is intentional for sandboxed hosts and keeps the review content
 inside the tool result. Clients without MCP Apps support receive the same
 structured proposal data and text status message as a normal MCP tool.
+
+Create results identify `kind=create`, have no `pageId` before publish, and
+include a small fact-review and related-candidate summary. Fact constraints are
+validated only when they are machine-readable; otherwise the UI shows
+`UNKNOWN`. Candidates are suggestions, never facts or automatic links.
 
 Approval is not an MCP App action. VUS does not expose publish/reject tools,
 because this stateless bearer transport cannot establish app-call provenance

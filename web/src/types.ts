@@ -135,10 +135,19 @@ export interface Revision {
 
 export interface PageChangeProposal {
   id: string;
-  pageId: string;
+  pageId?: string;
+  kind: 'create' | 'edit';
+  targetParentId?: string;
+  targetWorkspaceId?: string;
   baseHash: string;
   proposedContent: unknown[];
   proposedTitle: string;
+  proposedType: 'doc' | 'collection';
+  proposedIcon: string;
+  proposedCover: string;
+  proposedDescription: string;
+  proposedTags: string[];
+  proposedProps: Record<string, unknown>;
   creatorId: string;
   creatorType: 'human' | 'agent';
   creatorName: string;
@@ -146,10 +155,60 @@ export interface PageChangeProposal {
   updatedAt: string;
   status: 'pending' | 'published' | 'rejected' | 'superseded';
   summary: string;
+  factReview: FactReview;
+  relatedCandidates: RelatedCandidate[];
+  selectedRelatedIds: string[];
+  originalSnapshot?: unknown;
+  lastHumanEditor?: string;
+  lastHumanEditedAt?: string;
   publishedAt?: string;
   publishedBy?: string;
   rejectedAt?: string;
   rejectedBy?: string;
+}
+
+export interface FactItem {
+  id?: string;
+  constraintId?: string;
+  label: string;
+  value: string;
+  category: 'provided' | 'derived' | 'assumption' | 'missing' | 'unsupported' | string;
+  source?: string;
+  evidence?: string;
+  confirmed?: boolean;
+}
+
+export interface FactConstraint {
+  id: string;
+  label: string;
+  required: number;
+}
+
+export interface FactGap {
+  id: string;
+  constraintId: string;
+  label: string;
+  message: string;
+  category: 'missing' | string;
+}
+
+export interface FactReview {
+  validation: 'deterministic' | 'unknown' | string;
+  facts: FactItem[];
+  constraints: FactConstraint[];
+  provided: number;
+  required: number;
+  gaps: FactGap[];
+}
+
+export interface RelatedCandidate {
+  pageId: string;
+  title: string;
+  snippet?: string;
+  rationale: string;
+  rank: number;
+  selected: boolean;
+  dismissed?: boolean;
 }
 
 export interface Comment {

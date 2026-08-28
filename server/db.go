@@ -309,7 +309,16 @@ CREATE TABLE IF NOT EXISTS page_revisions (
 CREATE INDEX IF NOT EXISTS idx_rev_page ON page_revisions(page_id, created_at);
 CREATE TABLE IF NOT EXISTS page_change_proposals (
 	id TEXT PRIMARY KEY,
-	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+	page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,
+	proposal_kind TEXT NOT NULL DEFAULT 'edit' CHECK(proposal_kind IN ('create', 'edit')),
+	target_parent_id TEXT,
+	target_workspace_id TEXT NOT NULL DEFAULT '',
+	proposed_type TEXT NOT NULL DEFAULT 'doc',
+	proposed_icon TEXT NOT NULL DEFAULT '',
+	proposed_cover TEXT NOT NULL DEFAULT '',
+	proposed_description TEXT NOT NULL DEFAULT '',
+	proposed_tags TEXT NOT NULL DEFAULT '[]',
+	proposed_props TEXT NOT NULL DEFAULT '{}',
 	base_hash TEXT NOT NULL,
 	proposed_content TEXT NOT NULL,
 	proposed_title TEXT NOT NULL DEFAULT '',
@@ -320,6 +329,12 @@ CREATE TABLE IF NOT EXISTS page_change_proposals (
 	updated_at TEXT NOT NULL,
 	status TEXT NOT NULL CHECK(status IN ('pending', 'published', 'rejected', 'superseded')),
 	summary TEXT NOT NULL DEFAULT '',
+	fact_review TEXT NOT NULL DEFAULT '{}',
+	related_candidates TEXT NOT NULL DEFAULT '[]',
+	selected_related_ids TEXT NOT NULL DEFAULT '[]',
+	original_snapshot TEXT NOT NULL DEFAULT '{}',
+	last_human_editor TEXT,
+	last_human_edited_at TEXT,
 	published_at TEXT,
 	published_by TEXT,
 	rejected_at TEXT,
@@ -364,6 +379,125 @@ func ensureColumn(db *sql.DB, table, column, ddl string) error {
 	return err
 }
 
+const proposalTableDDL = `CREATE TABLE page_change_proposals (
+	id TEXT PRIMARY KEY,
+	page_id TEXT REFERENCES pages(id) ON DELETE CASCADE,
+	proposal_kind TEXT NOT NULL DEFAULT 'edit' CHECK(proposal_kind IN ('create', 'edit')),
+	target_parent_id TEXT,
+	target_workspace_id TEXT NOT NULL DEFAULT '',
+	proposed_type TEXT NOT NULL DEFAULT 'doc',
+	proposed_icon TEXT NOT NULL DEFAULT '',
+	proposed_cover TEXT NOT NULL DEFAULT '',
+	proposed_description TEXT NOT NULL DEFAULT '',
+	proposed_tags TEXT NOT NULL DEFAULT '[]',
+	proposed_props TEXT NOT NULL DEFAULT '{}',
+	base_hash TEXT NOT NULL,
+	proposed_content TEXT NOT NULL,
+	proposed_title TEXT NOT NULL DEFAULT '',
+	creator_id TEXT NOT NULL DEFAULT '',
+	creator_type TEXT NOT NULL DEFAULT 'human',
+	creator_name TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	status TEXT NOT NULL CHECK(status IN ('pending', 'published', 'rejected', 'superseded')),
+	summary TEXT NOT NULL DEFAULT '',
+	fact_review TEXT NOT NULL DEFAULT '{}',
+	related_candidates TEXT NOT NULL DEFAULT '[]',
+	selected_related_ids TEXT NOT NULL DEFAULT '[]',
+	original_snapshot TEXT NOT NULL DEFAULT '{}',
+	last_human_editor TEXT,
+	last_human_edited_at TEXT,
+	published_at TEXT,
+	published_by TEXT,
+	rejected_at TEXT,
+	rejected_by TEXT
+)`
+
+func migrateProposalTable(db *sql.DB) error {
+	rows, err := db.Query(`PRAGMA table_info(page_change_proposals)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	pageIDNotNull := false
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, typ string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return err
+		}
+		columns[name] = true
+		if name == "page_id" {
+			pageIDNotNull = notNull != 0
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if pageIDNotNull {
+		if _, err := db.Exec(`DROP INDEX IF EXISTS idx_proposal_page_status`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`DROP INDEX IF EXISTS idx_proposal_status_created`); err != nil {
+			return err
+		}
+		if _, err := db.Exec(`ALTER TABLE page_change_proposals RENAME TO page_change_proposals_legacy`); err != nil {
+			return fmt.Errorf("rename legacy proposals: %w", err)
+		}
+		if _, err := db.Exec(proposalTableDDL); err != nil {
+			return fmt.Errorf("create proposal table: %w", err)
+		}
+		_, err = db.Exec(`INSERT INTO page_change_proposals
+			(id, page_id, base_hash, proposed_content, proposed_title, creator_id, creator_type, creator_name,
+			 created_at, updated_at, status, summary, published_at, published_by, rejected_at, rejected_by)
+			SELECT id, page_id, base_hash, proposed_content, proposed_title, creator_id, creator_type, creator_name,
+			 created_at, updated_at, status, summary, published_at, published_by, rejected_at, rejected_by
+			FROM page_change_proposals_legacy`)
+		if err != nil {
+			return fmt.Errorf("copy legacy proposals: %w", err)
+		}
+		if _, err := db.Exec(`DROP TABLE page_change_proposals_legacy`); err != nil {
+			return fmt.Errorf("drop legacy proposals: %w", err)
+		}
+		columns = map[string]bool{"proposal_kind": true}
+	}
+	for _, column := range []struct{ name, ddl string }{
+		{"proposal_kind", `proposal_kind TEXT NOT NULL DEFAULT 'edit'`},
+		{"target_parent_id", `target_parent_id TEXT`},
+		{"target_workspace_id", `target_workspace_id TEXT NOT NULL DEFAULT ''`},
+		{"proposed_type", `proposed_type TEXT NOT NULL DEFAULT 'doc'`},
+		{"proposed_icon", `proposed_icon TEXT NOT NULL DEFAULT ''`},
+		{"proposed_cover", `proposed_cover TEXT NOT NULL DEFAULT ''`},
+		{"proposed_description", `proposed_description TEXT NOT NULL DEFAULT ''`},
+		{"proposed_tags", `proposed_tags TEXT NOT NULL DEFAULT '[]'`},
+		{"proposed_props", `proposed_props TEXT NOT NULL DEFAULT '{}'`},
+		{"fact_review", `fact_review TEXT NOT NULL DEFAULT '{}'`},
+		{"related_candidates", `related_candidates TEXT NOT NULL DEFAULT '[]'`},
+		{"selected_related_ids", `selected_related_ids TEXT NOT NULL DEFAULT '[]'`},
+		{"original_snapshot", `original_snapshot TEXT NOT NULL DEFAULT '{}'`},
+		{"last_human_editor", `last_human_editor TEXT`},
+		{"last_human_edited_at", `last_human_edited_at TEXT`},
+	} {
+		if !columns[column.name] {
+			if err := ensureColumn(db, "page_change_proposals", column.name, column.ddl); err != nil {
+				return fmt.Errorf("migrate proposal %s: %w", column.name, err)
+			}
+			columns[column.name] = true
+		}
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_proposal_page_status ON page_change_proposals(page_id, status, created_at)`)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`CREATE INDEX IF NOT EXISTS idx_proposal_status_created ON page_change_proposals(status, created_at)`)
+	return err
+}
+
 func openDB(path string) (*sql.DB, error) {
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)", path)
 	db, err := sql.Open("sqlite", dsn)
@@ -375,6 +509,9 @@ func openDB(path string) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if err := migrateProposalTable(db); err != nil {
+		return nil, fmt.Errorf("migrate proposals: %w", err)
 	}
 	if err := ensureColumn(db, "pages", "parent_id", `parent_id TEXT REFERENCES pages(id) ON DELETE CASCADE`); err != nil {
 		return nil, fmt.Errorf("migrate pages.parent_id: %w", err)

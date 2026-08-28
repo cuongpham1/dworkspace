@@ -196,6 +196,240 @@ func TestMCPProposalResultLinksWidgetAndKeepsHumanApprovalOutOfMCP(t *testing.T)
 	}
 }
 
+func TestMCPCreatePageCreatesProposalBeforeCanonicalPage(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "proposal-create@example.test")
+	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	ws := s.firstWorkspaceOf(t, uid)
+	var before int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	result, err := callTool(t, s, u, "create_page", `{"title":"Agent-created BRD","workspace_id":"`+ws+`","markdown":"three acceptance criteria"}`)
+
+	// Then
+	if err != nil {
+		t.Fatalf("create_page: %v", err)
+	}
+	if !strings.Contains(result, "CREATED PROPOSAL") || !strings.Contains(result, "awaiting human review") {
+		t.Fatalf("create_page response did not describe the gate: %s", result)
+	}
+	var payload struct {
+		Proposal struct {
+			Kind   string `json:"kind"`
+			PageID string `json:"pageId"`
+			Status string `json:"status"`
+		} `json:"proposal"`
+	}
+	if err := json.Unmarshal([]byte(stripMarkers(result)), &payload); err != nil {
+		t.Fatalf("proposal response: %v (%s)", err, result)
+	}
+	if payload.Proposal.Kind != "create" || payload.Proposal.PageID != "" || payload.Proposal.Status != proposalStatusPending {
+		t.Fatalf("create proposal = %#v", payload.Proposal)
+	}
+	var after int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages`).Scan(&after); err != nil {
+		t.Fatal(err)
+	}
+	if after != before {
+		t.Fatalf("agent create inserted a canonical page: before=%d after=%d", before, after)
+	}
+	var indexed int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages_fts WHERE title = ?`, "Agent-created BRD").Scan(&indexed); err != nil {
+		t.Fatal(err)
+	}
+	if indexed != 0 {
+		t.Fatal("create proposal was indexed before publication")
+	}
+}
+
+func TestCreateProposalReviewPublishesWithGapsAndSelectedRelatedLinks(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, cookie := signedIn(t, s, "proposal-create-review@example.test")
+	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	ws := s.firstWorkspaceOf(t, uid)
+	related := s.makePage(t, ws, uid, "", "Related source", `{}`)
+	review := `{"constraints":[{"id":"acceptance_criteria","label":"Acceptance Criteria","required":5}],"facts":[{"id":"ac-1","constraintId":"acceptance_criteria","label":"AC-1","value":"One","category":"provided"},{"id":"ac-2","constraintId":"acceptance_criteria","label":"AC-2","value":"Two","category":"provided"},{"id":"ac-3","constraintId":"acceptance_criteria","label":"AC-3","value":"Three","category":"provided"}]}`
+	candidates := `[{"pageId":"` + related + `","title":"Related source","rationale":"Same customer topic","rank":1}]`
+
+	// When
+	result, err := callTool(t, s, u, "create_page", `{"title":"Reviewable BRD","workspace_id":"`+ws+`","markdown":"agent draft","fact_review":`+review+`,"related_candidates":`+candidates+`}`)
+	if err != nil {
+		t.Fatalf("create proposal: %v", err)
+	}
+	var payload struct {
+		Proposal pageChangeProposal `json:"proposal"`
+	}
+	if err := json.Unmarshal([]byte(stripMarkers(result)), &payload); err != nil {
+		t.Fatal(err)
+	}
+	p := payload.Proposal
+	if p.Kind != proposalKindCreate || p.PageID != "" {
+		t.Fatalf("proposal kind/page = %q/%q", p.Kind, p.PageID)
+	}
+	if p.FactReview.Provided != 3 || p.FactReview.Required != 5 || len(p.FactReview.Gaps) != 2 {
+		t.Fatalf("fact review = %#v", p.FactReview)
+	}
+	if len(p.Related) != 1 || len(p.SelectedRelated) != 0 {
+		t.Fatalf("related review = %#v selected=%#v", p.Related, p.SelectedRelated)
+	}
+	listed := proposalRequest(t, s, cookie, http.MethodGet, "/api/proposals", "")
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), p.ID) {
+		t.Fatalf("create proposal list = %d %s", listed.Code, listed.Body.String())
+	}
+	got := proposalRequest(t, s, cookie, http.MethodGet, "/api/proposals/"+p.ID, "")
+	if got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"kind":"create"`) {
+		t.Fatalf("create proposal get = %d %s", got.Code, got.Body.String())
+	}
+	var pagesBefore int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages WHERE title = 'Reviewable BRD'`).Scan(&pagesBefore); err != nil {
+		t.Fatal(err)
+	}
+	if pagesBefore != 0 {
+		t.Fatal("create proposal inserted a page")
+	}
+
+	patch := proposalRequest(t, s, cookie, http.MethodPatch, "/api/proposals/"+p.ID, `{"selectedRelatedIds":["`+related+`"]}`)
+	if patch.Code != http.StatusOK {
+		t.Fatalf("select candidate: %d %s", patch.Code, patch.Body.String())
+	}
+	var selected pageChangeProposal
+	if err := json.Unmarshal(patch.Body.Bytes(), &selected); err != nil {
+		t.Fatal(err)
+	}
+	if selected.FactReview.Provided != 3 || len(selected.FactReview.Gaps) != 2 {
+		t.Fatalf("candidate filled a fact gap: %#v", selected.FactReview)
+	}
+
+	completedReview := `{"constraints":[{"id":"acceptance_criteria","label":"Acceptance Criteria","required":5}],"facts":[{"id":"ac-1","constraintId":"acceptance_criteria","value":"One","category":"provided"},{"id":"ac-2","constraintId":"acceptance_criteria","value":"Two","category":"provided"},{"id":"ac-3","constraintId":"acceptance_criteria","value":"Three","category":"provided"},{"id":"ac-4","constraintId":"acceptance_criteria","value":"Four","category":"provided"},{"id":"ac-5","constraintId":"acceptance_criteria","value":"Five","category":"provided"}]}`
+	patch = proposalRequest(t, s, cookie, http.MethodPatch, "/api/proposals/"+p.ID, `{"proposedTitle":"Human-reviewed BRD","markdown":"human final","factReview":`+completedReview+`,"selectedRelatedIds":["`+related+`"]}`)
+	if patch.Code != http.StatusOK {
+		t.Fatalf("edit create proposal: %d %s", patch.Code, patch.Body.String())
+	}
+	if !strings.Contains(patch.Body.String(), "Human-reviewed BRD") {
+		t.Fatal("human edit was not returned")
+	}
+
+	published := proposalRequest(t, s, cookie, http.MethodPost, "/api/proposals/"+p.ID+"/publish", `{}`)
+	if published.Code != http.StatusOK {
+		t.Fatalf("publish create proposal: %d %s", published.Code, published.Body.String())
+	}
+	var pageID string
+	if err := s.db.QueryRow(`SELECT id FROM pages WHERE title = 'Human-reviewed BRD'`).Scan(&pageID); err != nil {
+		t.Fatal(err)
+	}
+	var linkCount int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM links WHERE source_id = ? AND target_id = ?`, pageID, related).Scan(&linkCount); err != nil {
+		t.Fatal(err)
+	}
+	if linkCount != 1 {
+		t.Fatalf("selected related link count = %d", linkCount)
+	}
+	var status, publishedPageID string
+	if err := s.db.QueryRow(`SELECT status, page_id FROM page_change_proposals WHERE id = ?`, p.ID).Scan(&status, &publishedPageID); err != nil {
+		t.Fatal(err)
+	}
+	if status != proposalStatusPublished || publishedPageID != pageID {
+		t.Fatalf("published proposal = %q/%q", status, publishedPageID)
+	}
+	var proposalAudit int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM audit_log WHERE action = 'proposal_published' AND page_id = ? AND actor_type = 'human'`, pageID).Scan(&proposalAudit); err != nil || proposalAudit != 1 {
+		t.Fatalf("publisher audit = %d, %v", proposalAudit, err)
+	}
+	if second := proposalRequest(t, s, cookie, http.MethodPost, "/api/proposals/"+p.ID+"/publish", `{}`); second.Code != http.StatusOK {
+		t.Fatalf("double publish = %d %s", second.Code, second.Body.String())
+	}
+}
+
+func TestCreateProposalRejectAndAgentApprovalAreSafe(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, cookie := signedIn(t, s, "proposal-create-reject@example.test")
+	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	ws := s.firstWorkspaceOf(t, uid)
+	result, err := callTool(t, s, u, "create_page", `{"title":"Rejected canonical","workspace_id":"`+ws+`"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload struct {
+		Proposal pageChangeProposal `json:"proposal"`
+	}
+	if err := json.Unmarshal([]byte(stripMarkers(result)), &payload); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	rejected := proposalRequest(t, s, cookie, http.MethodPost, "/api/proposals/"+payload.Proposal.ID+"/reject", `{}`)
+
+	// Then
+	if rejected.Code != http.StatusOK {
+		t.Fatalf("reject: %d %s", rejected.Code, rejected.Body.String())
+	}
+	if repeated := proposalRequest(t, s, cookie, http.MethodPost, "/api/proposals/"+payload.Proposal.ID+"/reject", `{}`); repeated.Code != http.StatusOK {
+		t.Fatalf("double reject: %d", repeated.Code)
+	}
+	var pages int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages WHERE title = 'Rejected canonical'`).Scan(&pages); err != nil {
+		t.Fatal(err)
+	}
+	if pages != 0 {
+		t.Fatal("reject left a canonical page")
+	}
+	approval := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/proposals/"+payload.Proposal.ID+"/publish", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer token-not-used")
+	s.ServeHTTP(approval, req)
+	if approval.Code != http.StatusUnauthorized {
+		t.Fatalf("agent approval without token record = %d", approval.Code)
+	}
+}
+
+func TestHumanEditingEditProposalPreservesBaseHashAndStaleProtection(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, cookie := signedIn(t, s, "proposal-edit-workspace@example.test")
+	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	ws := s.firstWorkspaceOf(t, uid)
+	page := s.makePage(t, ws, uid, "", "Canonical", `{}`)
+	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, `[ {"type":"paragraph","content":[{"type":"text","text":"old"}]} ]`, page); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"agent draft","mode":"replace"}`); err != nil {
+		t.Fatal(err)
+	}
+	id := proposalID(t, s, page)
+	var originalHash string
+	if err := s.db.QueryRow(`SELECT base_hash FROM page_change_proposals WHERE id = ?`, id).Scan(&originalHash); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	updated := proposalRequest(t, s, cookie, http.MethodPatch, "/api/proposals/"+id, `{"proposedTitle":"Human title","markdown":"human proposal"}`)
+
+	// Then
+	if updated.Code != http.StatusOK {
+		t.Fatalf("edit proposal: %d %s", updated.Code, updated.Body.String())
+	}
+	var editedHash, lastEditor string
+	if err := s.db.QueryRow(`SELECT base_hash, last_human_editor FROM page_change_proposals WHERE id = ?`, id).Scan(&editedHash, &lastEditor); err != nil {
+		t.Fatal(err)
+	}
+	if editedHash != originalHash || lastEditor != uid {
+		t.Fatalf("proposal provenance/base = %q/%q", editedHash, lastEditor)
+	}
+	if _, err := s.db.Exec(`UPDATE pages SET title = ?, content = ? WHERE id = ?`, "Newer human", `[ {"type":"paragraph","content":[{"type":"text","text":"newer"}]} ]`, page); err != nil {
+		t.Fatal(err)
+	}
+	stale := proposalRequest(t, s, cookie, http.MethodPost, "/api/proposals/"+id+"/publish", `{}`)
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("stale edited proposal = %d %s", stale.Code, stale.Body.String())
+	}
+}
+
 func TestMCPReplaceContentCreatesProposalWithoutCanonicalSideEffects(t *testing.T) {
 	// Given
 	s := testServer(t)

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"database/sql"
+	"encoding/json"
 	"os"
 	"regexp"
 	"strings"
@@ -121,24 +123,39 @@ func TestCreatePageSetsCoverTagsAndDescription(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create_page: %v", err)
 	}
-	id := regexp.MustCompile(`\b([0-9a-f]{32})\b`).FindString(out)
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("decode proposal: %v", err)
+	}
+	id := payload.ID
 	if id == "" {
-		t.Fatalf("no page id in %q", out)
+		t.Fatalf("no proposal id in %q", out)
 	}
 	var cover, desc, tags string
 	if err := s.db.QueryRow(`SELECT cover, description, tags FROM pages WHERE id = ?`, id).Scan(&cover, &desc, &tags); err != nil {
-		t.Fatalf("read back: %v", err)
+		if err != sql.ErrNoRows {
+			t.Fatalf("read back: %v", err)
+		}
+	} else {
+		t.Fatalf("create_page created a canonical page before human publish")
 	}
-	if !strings.HasPrefix(cover, "gradient:") {
+	if !strings.Contains(out, `"cover":"gradient:`) {
 		t.Errorf("cover not stored: %q", cover)
 	}
-	if desc != "How we work." {
+	proposal, err := s.proposalByIDAny(id)
+	if err != nil {
+		t.Fatalf("read proposal: %v", err)
+	}
+	if proposal.ProposedDesc != "How we work." {
 		t.Errorf("description not stored: %q", desc)
 	}
 	// Tags go through the same normalisation as everywhere else. That does NOT
 	// lower-case them — the spelling somebody chose is kept, and tagSuggest.ts
 	// is what stops near-duplicates in the interface. What it does do: strip a
 	// leading '#', join whitespace with '-', and drop repeats case-insensitively.
+	tags = strings.Join(proposal.ProposedTags, ",")
 	if strings.Contains(tags, "#") {
 		t.Errorf("leading # not stripped: %q", tags)
 	}

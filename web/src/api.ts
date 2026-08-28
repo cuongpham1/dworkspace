@@ -8,6 +8,7 @@ import type {
   OAuthGrant,
   Page,
   PageMeta,
+  PageChangeProposal,
   PublicFormConfig,
   DworkspaceFile,
   SearchResult,
@@ -448,6 +449,14 @@ export const api = {
     req<import('./types').PageChangeProposal>(`/api/pages/${pageId}/proposals/${proposalId}/publish`, { method: 'POST' }),
   rejectProposal: (pageId: string, proposalId: string) =>
     req<import('./types').PageChangeProposal>(`/api/pages/${pageId}/proposals/${proposalId}/reject`, { method: 'POST' }),
+  listAllProposals: () => req<PageChangeProposal[]>('/api/proposals'),
+  getProposalById: (proposalId: string) => req<PageChangeProposal>(`/api/proposals/${proposalId}`),
+  updateProposal: (proposalId: string, body: Record<string, unknown>) =>
+    req<PageChangeProposal>(`/api/proposals/${proposalId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  publishProposalById: (proposalId: string) =>
+    req<PageChangeProposal>(`/api/proposals/${proposalId}/publish`, { method: 'POST' }),
+  rejectProposalById: (proposalId: string) =>
+    req<PageChangeProposal>(`/api/proposals/${proposalId}/reject`, { method: 'POST' }),
 
   listComments: (pageId: string) => req<import('./types').Comment[]>(`/api/pages/${pageId}/comments`),
   // Open comments per page of a workspace, in one go — for the counters on

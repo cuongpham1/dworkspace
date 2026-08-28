@@ -387,8 +387,17 @@ which is also what you get for a page you may not read.
 | `cover` | string | no |
 | `description` | string | no |
 | `tags` | array of string | no |
+| `fact_review` | object | no |
+| `related_candidates` | array | no |
+| `selected_related_ids` | array of string | no |
 
-Three things decide where the page lands. `parent_id` puts it under that page —
+`create_page` creates a pending **create proposal** rather than a canonical page.
+Until a human publishes it, there is no page row, Documents tree entry, search
+index entry, graph/backlink materialization, or `page.created` event. Rejecting
+it leaves no page garbage. Publish atomically creates the page with the reviewed
+title, body, metadata, and selected links, then returns its id and review state.
+
+Three things decide where the proposed page lands. `parent_id` puts it under that page —
 and if that page is a **database**, the new page is a **row** in it. With no
 parent, `workspace_id` decides; with neither, it lands in your default
 workspace, which may not be the one you meant.
@@ -917,9 +926,20 @@ Errors: `unknown action "x" — use list (the default), get or restore`;
 
 `proposals` is the structured proposal delivery surface for document review.
 Its create action records a pending proposed revision and leaves the canonical
-page unchanged. List and get expose pending and terminal proposal history.
+page unchanged. Create proposals have no `page_id` until publish; edit proposals
+retain their original base hash. Both are editable in the signed-in human
+review workspace. List and get expose pending and terminal proposal history.
 Publish and reject are intentionally not MCP actions: they require an
 authenticated browser session with page write permission.
+
+The optional `fact_review` contains machine-readable facts and constraints.
+Only explicit constraints are validated deterministically. A free-form
+workspace rule is not parsed or treated as proof: its validation is `UNKNOWN`.
+Fact categories include `provided`, `derived`, `assumption`, `missing`, and
+`unsupported`; humans can fill deterministic gaps directly in the review
+workspace. `related_candidates` are ranked suggestions with rationale/snippet,
+not facts. They are unchecked by default and only selected candidates become
+canonical links on publish; candidates never satisfy a missing fact.
 
 The result includes MCP `structuredContent` and an `outputSchema`, while the
 usual text content remains available to clients that only support text. Hosts
