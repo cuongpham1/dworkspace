@@ -317,13 +317,24 @@ var mcpTools = []map[string]any{
 			"type":        "object",
 			"description": "Structured proposal metadata and content; text content remains available for clients without structured output support.",
 			"properties": map[string]any{
-				"id":        map[string]any{"type": "string"},
-				"pageId":    map[string]any{"type": "string"},
-				"status":    map[string]any{"type": "string", "enum": []string{"pending", "published", "rejected", "superseded"}},
-				"message":   map[string]any{"type": "string"},
-				"proposals": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+				"id":              map[string]any{"type": "string"},
+				"pageId":          map[string]any{"type": "string"},
+				"status":          map[string]any{"type": "string", "enum": []string{"pending", "published", "rejected", "superseded"}},
+				"message":         map[string]any{"type": "string"},
+				"baseHash":        map[string]any{"type": "string"},
+				"proposedContent": map[string]any{"description": "The original JSON document content, retained at the top level for compatibility."},
+				"proposedTitle":   map[string]any{"type": "string"},
+				"contentNote":     map[string]any{"type": "string"},
+				"proposals":       map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+				"proposal":        map[string]any{"type": "object"},
+				"canonical":       map[string]any{"type": "object"},
+				"reviewUrl":       map[string]any{"type": "string"},
 			},
 		},
+		"_meta": map[string]any{"ui": map[string]any{
+			"resourceUri": mcpAppResourceURI,
+			"visibility":  []string{"model", "app"},
+		}},
 	},
 	{
 		"name":        "comments",
@@ -617,8 +628,14 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		}
 		rpcResult(w, req.ID, map[string]any{
 			"protocolVersion": version,
-			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      info,
+			"capabilities": map[string]any{
+				"tools":     map[string]any{},
+				"resources": map[string]any{"listChanged": false},
+				"extensions": map[string]any{"io.modelcontextprotocol/ui": map[string]any{
+					"mimeTypes": []string{mcpAppMIME},
+				}},
+			},
+			"serverInfo": info,
 			// The one convention worth knowing before the first tool call:
 			// workspaces can carry rules their admin wrote for agents.
 			"instructions": "Workspaces can carry rules — working conventions their admin wrote for agents. " +
@@ -629,6 +646,17 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		rpcResult(w, req.ID, map[string]any{})
 	case "tools/list":
 		rpcResult(w, req.ID, map[string]any{"tools": mcpTools})
+	case "resources/list":
+		rpcResult(w, req.ID, map[string]any{"resources": []map[string]any{mcpProposalViewResource()}})
+	case "resources/read":
+		var params struct {
+			URI string `json:"uri"`
+		}
+		if err := json.Unmarshal(req.Params, &params); err != nil || params.URI != mcpAppResourceURI {
+			rpcError(w, req.ID, -32602, "unknown UI resource")
+			return
+		}
+		rpcResult(w, req.ID, mcpProposalViewContents())
 	case "tools/call":
 		var params struct {
 			Name      string          `json:"name"`
@@ -651,7 +679,14 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		if params.Name == "proposals" {
 			var value any
 			if json.Unmarshal([]byte(result), &value) == nil {
-				rpcResult(w, req.ID, structuredTextResult(result, false, value))
+				if structured, ok := value.(map[string]any); ok {
+					if path, ok := structured["reviewPath"].(string); ok {
+						if reviewURL := s.mcpReviewURL(path); reviewURL != "" {
+							structured["reviewUrl"] = reviewURL
+						}
+					}
+				}
+				rpcResult(w, req.ID, structuredTextResult(wrapUntrusted(result), false, value))
 				return
 			}
 		}

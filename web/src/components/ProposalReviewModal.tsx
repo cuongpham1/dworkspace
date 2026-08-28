@@ -96,6 +96,7 @@ function Diff({ proposal, canonicalContent, canonicalTitle }: {
 
 export default function ProposalReviewModal({
   pageId,
+  initialProposalId,
   canonicalContent,
   canonicalTitle,
   canEdit,
@@ -103,6 +104,7 @@ export default function ProposalReviewModal({
   onPublished,
 }: {
   pageId: string;
+  initialProposalId?: string;
   canonicalContent: unknown[];
   canonicalTitle: string;
   canEdit: boolean;
@@ -110,7 +112,7 @@ export default function ProposalReviewModal({
   onPublished: () => void;
 }) {
   const [proposals, setProposals] = useState<PageChangeProposal[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialProposalId ?? '');
   const [tab, setTab] = useState<ReviewTab>('preview');
   const [busy, setBusy] = useState(false);
   useExclusiveModal(onClose);

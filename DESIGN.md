@@ -86,13 +86,26 @@ proposed content. No new shadow recipes are introduced.
   changed sections before publish; a future inline rich-text diff can replace
   the projection without changing the proposal contract.
 
-## 9. MCP Apps Boundary
+## 9. MCP Apps Proposal Review
 
-MCP Apps resource/view rendering is deliberately outside this MVP boundary.
-The feature contract requires the native VUS review experience and makes rich
-MCP delivery conditional when practical; this server's existing stateless MCP
-surface implements `tools/list` and `tools/call`, not the MCP Apps
-`resources/list` / `resources/read` lifecycle. Proposal tools therefore expose
-structured results and retain a text fallback. A future `DocumentProposalView`
-must add a bundled `text/html;profile=mcp-app` resource, `ui://` tool metadata,
-resource handlers, and host handshake tests as one protocol-complete change.
+VUS exposes `DocumentProposalView` as a bundled, self-contained
+`text/html;profile=mcp-app` resource at
+`ui://dworkspace/proposals/document-review.html`. The proposal tool links it
+with `_meta.ui.resourceUri` and retains both `structuredContent` and a
+meaningful text fallback. The view follows the MCP Apps `ui/initialize`,
+`ui/notifications/initialized`, `ui/notifications/tool-result`, and
+`ui/notifications/size-changed` messages, and uses host theme variables when
+provided. It renders the full proposed document, canonical context, and a
+block-aware changes-only view at responsive sizes.
+
+The view has no external assets, API tokens, or network dependencies. Its
+resource metadata declares empty CSP domains and requests a visible host
+border. This is intentional for sandboxed hosts and keeps the review content
+inside the tool result. Clients without MCP Apps support receive the same
+structured proposal data and text status message as a normal MCP tool.
+
+Approval is not an MCP App action. VUS does not expose publish/reject tools,
+because this stateless bearer transport cannot establish app-call provenance
+strong enough to prevent a model from replaying one. The widget hands a human
+to the signed-in VUS browser review surface, where page permission and the
+proposal base hash are checked before the existing atomic publish path runs.

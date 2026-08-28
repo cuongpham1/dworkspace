@@ -29,6 +29,173 @@ func proposalRequest(t *testing.T, s *Server, cookie, method, path, body string)
 	return rec
 }
 
+func mcpRequest(t *testing.T, s *Server, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	s.ServeHTTP(rec, req)
+	return rec
+}
+
+func proposalMCPToken(t *testing.T, s *Server, userID string) string {
+	t.Helper()
+	token := "proposal-mcp-token"
+	if _, err := s.db.Exec(`INSERT INTO api_tokens (id, user_id, name, token_hash, scope, created_at) VALUES (?, ?, 'proposal MCP', ?, 'write', ?)`, newID(), userID, tokenHash(token), now()); err != nil {
+		t.Fatal(err)
+	}
+	return token
+}
+
+func mcpResult(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
+	t.Helper()
+	var envelope struct {
+		Result map[string]any `json:"result"`
+		Error  map[string]any `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("MCP response: %v (%s)", err, rec.Body.String())
+	}
+	if envelope.Error != nil {
+		t.Fatalf("MCP error: %#v", envelope.Error)
+	}
+	return envelope.Result
+}
+
+func TestMCPAppsResourcesLifecycleAndInitializeCapability(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "proposal-mcp-resources@example.test")
+	token := proposalMCPToken(t, s, uid)
+
+	// When
+	initialized := mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{"extensions":{"io.modelcontextprotocol/ui":{"mimeTypes":["text/html;profile=mcp-app"]}}},"clientInfo":{"name":"protocol-test","version":"1"}}}`)
+	initResult := mcpResult(t, initialized)
+	capabilities, ok := initResult["capabilities"].(map[string]any)
+	if !ok {
+		t.Fatalf("initialize capabilities = %#v", initResult["capabilities"])
+	}
+	if _, ok := capabilities["resources"].(map[string]any); !ok {
+		t.Fatalf("resources capability missing: %#v", capabilities)
+	}
+	extensions, ok := capabilities["extensions"].(map[string]any)
+	if !ok {
+		t.Fatalf("extension capability missing: %#v", capabilities)
+	}
+	uiCapability, ok := extensions["io.modelcontextprotocol/ui"].(map[string]any)
+	if !ok || uiCapability["mimeTypes"].([]any)[0] != "text/html;profile=mcp-app" {
+		t.Fatalf("MCP Apps capability = %#v", extensions["io.modelcontextprotocol/ui"])
+	}
+	listed := mcpResult(t, mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":2,"method":"resources/list","params":{}}`))
+	resources, ok := listed["resources"].([]any)
+	if !ok || len(resources) != 1 {
+		t.Fatalf("resources/list = %#v", listed)
+	}
+	resource, ok := resources[0].(map[string]any)
+	if !ok || resource["uri"] != "ui://dworkspace/proposals/document-review.html" || resource["mimeType"] != "text/html;profile=mcp-app" {
+		t.Fatalf("listed UI resource = %#v", resources[0])
+	}
+	read := mcpResult(t, mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":3,"method":"resources/read","params":{"uri":"ui://dworkspace/proposals/document-review.html"}}`))
+	contents, ok := read["contents"].([]any)
+	if !ok || len(contents) != 1 {
+		t.Fatalf("resources/read = %#v", read)
+	}
+	content, ok := contents[0].(map[string]any)
+	if !ok || content["mimeType"] != "text/html;profile=mcp-app" {
+		t.Fatalf("UI resource content = %#v", contents[0])
+	}
+	html := content["text"].(string)
+	if strings.Contains(html, "clientInfo") || !strings.Contains(html, "appInfo") {
+		t.Fatalf("UI initialize identity does not follow MCP Apps schema: %s", html)
+	}
+	for _, marker := range []string{"ui/initialize", "appInfo", "ui/notifications/initialized", "ui/notifications/tool-result", "ui/notifications/tool-cancelled", "ui/resource-teardown", "Changes only", "Proposed preview", "Canonical context", "Open VUS review", "aria-live"} {
+		if !strings.Contains(html, marker) {
+			t.Fatalf("UI resource is missing marker %q", marker)
+		}
+	}
+	meta, ok := content["_meta"].(map[string]any)
+	if !ok || meta["ui"] == nil {
+		t.Fatalf("UI resource metadata = %#v", content["_meta"])
+	}
+	uiMeta := meta["ui"].(map[string]any)
+	csp := uiMeta["csp"].(map[string]any)
+	if len(csp["connectDomains"].([]any)) != 0 || len(csp["resourceDomains"].([]any)) != 0 || len(csp["frameDomains"].([]any)) != 0 {
+		t.Fatalf("UI resource CSP is not restrictive: %#v", csp)
+	}
+
+	// Then
+	if unauthorized := mcpRequest(t, s, "", `{"jsonrpc":"2.0","id":4,"method":"resources/list","params":{}}`); unauthorized.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthorized resources/list = %d", unauthorized.Code)
+	}
+	unknown := mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":"ui://dworkspace/proposals/missing.html"}}`)
+	if unknown.Code != http.StatusOK || !strings.Contains(unknown.Body.String(), "unknown UI resource") {
+		t.Fatalf("unknown resource = %d %s", unknown.Code, unknown.Body.String())
+	}
+}
+
+func TestMCPProposalResultLinksWidgetAndKeepsHumanApprovalOutOfMCP(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "proposal-mcp-widget@example.test")
+	token := proposalMCPToken(t, s, uid)
+	ws := s.firstWorkspaceOf(t, uid)
+	page := s.makePage(t, ws, uid, "", "BRD", `[{"type":"paragraph","content":[{"type":"text","text":"canonical"}]}]`)
+
+	// When
+	toolsResult := mcpResult(t, mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+	var proposalTool map[string]any
+	for _, candidate := range toolsResult["tools"].([]any) {
+		tool := candidate.(map[string]any)
+		if tool["name"] == "proposals" {
+			proposalTool = tool
+		}
+	}
+	if proposalTool == nil {
+		t.Fatal("proposals tool missing")
+	}
+	toolMeta := proposalTool["_meta"].(map[string]any)["ui"].(map[string]any)
+	if toolMeta["resourceUri"] != "ui://dworkspace/proposals/document-review.html" {
+		t.Fatalf("proposal tool UI link = %#v", toolMeta)
+	}
+	visibility := toolMeta["visibility"].([]any)
+	if len(visibility) != 2 || visibility[0] != "model" || visibility[1] != "app" {
+		t.Fatalf("proposal tool visibility = %#v", visibility)
+	}
+	created := mcpResult(t, mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"proposals","arguments":{"page_id":"`+page+`","action":"create","markdown":"proposed section","summary":"Agent review"}}}`))
+	structured, ok := created["structuredContent"].(map[string]any)
+	if !ok || structured["proposal"] == nil || structured["canonical"] == nil {
+		t.Fatalf("proposal structured content = %#v", created["structuredContent"])
+	}
+	if structured["baseHash"] == nil || structured["proposedContent"] == nil || structured["proposedTitle"] == nil || structured["contentNote"] == nil {
+		t.Fatalf("proposal compatibility fields = %#v", structured)
+	}
+	if _, hasURL := structured["reviewUrl"]; hasURL {
+		t.Fatal("MCP result used an untrusted request Host as reviewUrl")
+	}
+	content := created["content"].([]any)[0].(map[string]any)["text"].(string)
+
+	// Then
+	if !strings.Contains(content, "awaiting human review") {
+		t.Fatalf("text fallback lost proposal state: %s", content)
+	}
+	if !strings.Contains(content, "UNTRUSTED CONTENT") {
+		t.Fatalf("text fallback did not frame document content: %s", content)
+	}
+	for _, candidate := range toolsResult["tools"].([]any) {
+		name := candidate.(map[string]any)["name"]
+		if name == "publish_proposal" || name == "reject_proposal" {
+			t.Fatalf("approval tool exposed to MCP model: %v", name)
+		}
+	}
+	approvalAttempt := mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"proposals","arguments":{"page_id":"`+page+`","action":"publish"}}}`)
+	if approvalAttempt.Code != http.StatusOK || !strings.Contains(approvalAttempt.Body.String(), "publish and reject require the browser") {
+		t.Fatalf("MCP approval attempt = %d %s", approvalAttempt.Code, approvalAttempt.Body.String())
+	}
+}
+
 func TestMCPReplaceContentCreatesProposalWithoutCanonicalSideEffects(t *testing.T) {
 	// Given
 	s := testServer(t)

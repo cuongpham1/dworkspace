@@ -922,11 +922,33 @@ Publish and reject are intentionally not MCP actions: they require an
 authenticated browser session with page write permission.
 
 The result includes MCP `structuredContent` and an `outputSchema`, while the
-usual text content remains available to clients that only support text. The
-native VUS web review UI is the MVP view. MCP Apps resource rendering is an
-explicit follow-up boundary: this stateless server does not currently expose
-the required `ui://` resource plus `resources/list` / `resources/read`
-protocol, so it is not advertised as supported or faked through tool text.
+usual text content remains available to clients that only support text. Hosts
+that implement the MCP Apps extension can render the linked
+`ui://dworkspace/proposals/document-review.html` resource inline. The server
+also exposes the resource through `resources/list` and `resources/read`, with
+MIME type `text/html;profile=mcp-app` and a zero-domain CSP because the view is
+self-contained.
+
+The view receives the tool result through
+`ui/notifications/tool-result`, shows the proposed preview, canonical context,
+and block-aware changes-only view, and refreshes through the read-only
+`proposals` action. It sends `ui/initialize` and
+`ui/notifications/initialized`, follows host theme variables, and reports
+size changes. Unsupported hosts ignore the optional `_meta.ui` link and still
+receive the useful structured result plus the text fallback.
+
+Publish and reject remain browser-only. The view can open the review URL or
+send a handoff message, but it never calls an approval action. This is
+deliberate: VUS's stateless HTTP transport cannot distinguish a model's
+`tools/call` from an app-originated call, so app-only visibility cannot safely
+protect approval here. The authenticated VUS browser session performs the
+existing page permission, base-hash, history snapshot, Yjs, search, event,
+webhook, and audit checks.
+
+An absolute review URL is included only when `public_base_url`, the configured
+HTTPS domain, or an active tunnel supplies an administrator-controlled public
+base. Otherwise the view uses a host handoff message; the MCP result never
+puts a bearer token in a URL.
 
 Proposed document revisions are the review gate for agent-authored replacements.
 
