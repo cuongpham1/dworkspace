@@ -1,0 +1,98 @@
+# dworkspace Design System
+
+## 1. Atmosphere & Identity
+
+The app is a quiet, document-first workspace: familiar editorial reading space
+with just enough operational density for teams. Its signature is green action
+colour carried through soft tonal surfaces, not ornamental chrome. Review states
+should feel like a calm safety rail around the document, making the pending
+decision visible without turning the editor into an admin console.
+
+## 2. Color
+
+| Role | Token | Light | Dark | Usage |
+|------|------|------|------|------|
+| Surface / primary | `--bg` | `#ffffff` | `#191919` | App and document background |
+| Surface / secondary | `--sidebar-bg` | `#f7f6f3` | `#202020` | Sidebars and diff context |
+| Surface / elevated | `--card` | `#ffffff` | `#242424` | Dialogs and proposal panels |
+| Text / primary | `--fg` | `#37352f` | `#d4d4d4` | Document and headings |
+| Text / secondary | `--muted` | `#787774` | `#8f8f8f` | Metadata and hints |
+| Border / default | `--border` | `#e9e7e4` | `#2f2f2f` | Dividers and controls |
+| Accent / primary | `--accent` | `#2f7d4f` | `#4fa872` | Primary action and pending emphasis |
+| Accent / soft | `--accent-soft` | `rgba(47,125,79,.12)` | `rgba(79,168,114,.16)` | Active and pending surfaces |
+| Status / success | `--accent` | `#2f7d4f` | `#4fa872` | Published state |
+| Status / warning | `--glow-orange` | `#f97316` | `#f97316` | Pending state and stale warning |
+| Status / error | `--danger` | `#c4554d` | `#e06c62` | Rejection and destructive action |
+
+Accent is reserved for actions and state. The review UI uses the existing
+border-and-shadow dialog treatment and soft status surfaces rather than adding
+new decorative colours.
+
+## 3. Typography
+
+- Primary: Inter, `-apple-system`, BlinkMacSystemFont, `Segoe UI`, sans-serif.
+- Mono: JetBrains Mono for hashes and machine-readable identifiers.
+- Page and dialog headings use the existing 22/28px scale; body text is 14px;
+  captions and metadata are 12px.
+
+## 4. Spacing & Layout
+
+All spacing uses the existing 4px base unit: 4, 8, 12, 16, 20, 24, and 32px.
+The editor is a bounded app shell. `.page-body` owns document scrolling;
+proposal review is a modal with its own bounded scroll body. At 375px the
+review switches from a two-column comparison to a single readable column.
+
+## 5. Components
+
+### Proposal review modal
+
+- **Structure:** modal overlay → dialog header/status → metadata → tabbed
+  preview/diff surface → action cluster.
+- **Variants:** pending, published, rejected; preview and changes-only views.
+- **Spacing:** 8px clusters, 16px panel padding, 24px dialog padding.
+- **States:** loading, empty, pending, published, rejected, conflict/error.
+- **Accessibility:** labelled dialog, native buttons, keyboard tab order,
+  visible focus, status text independent of colour.
+- **Motion:** existing 100–150ms control transitions; no decorative motion.
+- **Layout:** `stack` inside a bounded modal scroll body; the comparison
+  `switcher` collapses to one column on narrow widths.
+
+### Status badge
+
+- **Structure:** inline label with text and state colour.
+- **Variants:** pending, published, rejected.
+- **Spacing:** 4px horizontal padding, 8px gap from adjacent metadata.
+- **States:** default and focus when it is part of a control.
+- **Accessibility:** state is written as text, never colour-only.
+
+## 6. Motion & Interaction
+
+Controls use the existing ease-out 100–150ms hover/press transition. Modal
+entry and tab changes remain static unless the existing shell supplies motion.
+`prefers-reduced-motion` disables non-essential transitions.
+
+## 7. Depth & Surface
+
+Strategy: mixed. Existing dialogs use a 1px border plus the shared `--shadow`;
+review panes use tonal surfaces and subtle borders to distinguish canonical and
+proposed content. No new shadow recipes are introduced.
+
+## 8. Accessibility Constraints & Accepted Debt
+
+- WCAG 2.2 AA target, 4.5:1 body contrast, visible keyboard focus, full
+  keyboard reachability, and reduced-motion support.
+- The MVP diff is block-aware and text-normalised rather than a rich-text
+  character diff. This is accepted because the requirement prioritises seeing
+  changed sections before publish; a future inline rich-text diff can replace
+  the projection without changing the proposal contract.
+
+## 9. MCP Apps Boundary
+
+MCP Apps resource/view rendering is deliberately outside this MVP boundary.
+The feature contract requires the native VUS review experience and makes rich
+MCP delivery conditional when practical; this server's existing stateless MCP
+surface implements `tools/list` and `tools/call`, not the MCP Apps
+`resources/list` / `resources/read` lifecycle. Proposal tools therefore expose
+structured results and retain a text fallback. A future `DocumentProposalView`
+must add a bundled `text/html;profile=mcp-app` resource, `ui://` tool metadata,
+resource handlers, and host handshake tests as one protocol-complete change.

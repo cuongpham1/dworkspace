@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS pages (
 	updated_at TEXT NOT NULL,
 	trashed_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_id);
 -- remove_diacritics 2 folds ä→a, ü→u, ß→ss before indexing (i18n-ok: the
 -- folded characters are the subject). Together with the prefix search this
 -- removes a large part of German inflection on its own: the plural of
@@ -308,6 +307,26 @@ CREATE TABLE IF NOT EXISTS page_revisions (
 	content TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_rev_page ON page_revisions(page_id, created_at);
+CREATE TABLE IF NOT EXISTS page_change_proposals (
+	id TEXT PRIMARY KEY,
+	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+	base_hash TEXT NOT NULL,
+	proposed_content TEXT NOT NULL,
+	proposed_title TEXT NOT NULL DEFAULT '',
+	creator_id TEXT NOT NULL DEFAULT '',
+	creator_type TEXT NOT NULL DEFAULT 'human',
+	creator_name TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	status TEXT NOT NULL CHECK(status IN ('pending', 'published', 'rejected', 'superseded')),
+	summary TEXT NOT NULL DEFAULT '',
+	published_at TEXT,
+	published_by TEXT,
+	rejected_at TEXT,
+	rejected_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_proposal_page_status ON page_change_proposals(page_id, status, created_at);
+CREATE INDEX IF NOT EXISTS idx_proposal_status_created ON page_change_proposals(status, created_at);
 CREATE TABLE IF NOT EXISTS comments (
 	id TEXT PRIMARY KEY,
 	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
@@ -356,6 +375,12 @@ func openDB(path string) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	if err := ensureColumn(db, "pages", "parent_id", `parent_id TEXT REFERENCES pages(id) ON DELETE CASCADE`); err != nil {
+		return nil, fmt.Errorf("migrate pages.parent_id: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_id)`); err != nil {
+		return nil, fmt.Errorf("migrate pages.parent_id index: %w", err)
 	}
 	if err := ensureColumn(db, "pages", "type", `type TEXT NOT NULL DEFAULT 'doc'`); err != nil {
 		return nil, fmt.Errorf("migrate pages.type: %w", err)

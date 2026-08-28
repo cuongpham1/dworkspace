@@ -48,8 +48,12 @@ func TestWriteContentDoesAllThreeModes(t *testing.T) {
 	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"only this","mode":"replace"}`); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
-	if got := body(); strings.Contains(got, "first") {
-		t.Error("replace did not replace")
+	if got := body(); !strings.Contains(got, "first") || !strings.Contains(got, "zero") {
+		t.Error("replace proposal changed canonical content")
+	}
+	var proposalStatus string
+	if err := s.db.QueryRow(`SELECT status FROM page_change_proposals WHERE page_id = ?`, page).Scan(&proposalStatus); err != nil || proposalStatus != proposalStatusPending {
+		t.Errorf("replace proposal status = %q, err=%v", proposalStatus, err)
 	}
 	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"x","mode":"nonsense"}`); err == nil {
 		t.Error("an unknown mode should be refused, not silently appended")
@@ -63,9 +67,10 @@ func TestRevisionsListGetRestore(t *testing.T) {
 	ws := s.firstWorkspaceOf(t, uid)
 	page := s.makePage(t, ws, uid, "", "Doc", `{}`)
 
-	// Two writes so there is something to go back to.
-	callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"version one","mode":"replace"}`)
-	callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"version two","mode":"replace"}`)
+	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, `[ {"type":"paragraph","content":[{"type":"text","text":"version one"}]} ]`, page); err != nil {
+		t.Fatal(err)
+	}
+	s.snapshotRevision(page, uid, "Test")
 
 	out, err := callTool(t, s, u, "revisions", `{"page_id":"`+page+`"}`)
 	if err != nil {
@@ -87,6 +92,10 @@ func TestRevisionsListGetRestore(t *testing.T) {
 	}
 	if _, err := callTool(t, s, u, "revisions", `{"page_id":"`+page+`","action":"restore","revision_id":"`+rev+`"}`); err != nil {
 		t.Fatalf("restore: %v", err)
+	}
+	var proposalStatus string
+	if err := s.db.QueryRow(`SELECT status FROM page_change_proposals WHERE page_id = ?`, page).Scan(&proposalStatus); err != nil || proposalStatus != proposalStatusPending {
+		t.Fatalf("restore did not create a pending proposal: %q (%v)", proposalStatus, err)
 	}
 	// Missing ids must be named, not guessed at.
 	if _, err := callTool(t, s, u, "revisions", `{"page_id":"`+page+`","action":"get"}`); err == nil {

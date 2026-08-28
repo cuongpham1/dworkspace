@@ -98,31 +98,14 @@ func (s *Server) mcpGetRevision(pageID, revID string) (string, error) {
 	return string(b), nil
 }
 
-// mcpRestoreRevision puts a page back to an older state. The CURRENT state is
-// saved as a new revision first, so that the restore itself stays reversible
-// too.
 func (s *Server) mcpRestoreRevision(u *user, pageID, revID string) (string, error) {
 	var title, content string
 	if err := s.db.QueryRow(`SELECT title, content FROM page_revisions WHERE id = ? AND page_id = ?`,
 		revID, pageID).Scan(&title, &content); err != nil {
 		return "", fmt.Errorf("revision %q not found on page %s", revID, pageID)
 	}
-	var curTitle, curContent string
-	if err := s.db.QueryRow(`SELECT title, content FROM pages WHERE id = ?`, pageID).Scan(&curTitle, &curContent); err != nil {
-		return "", fmt.Errorf("page %q not found", pageID)
-	}
-	if _, err := s.db.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, newID(), pageID, now(), u.ID, u.Name, curTitle, curContent); err != nil {
-		return "", err
-	}
-	if _, err := s.db.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ? WHERE id = ?`,
-		title, content, now(), pageID); err != nil {
-		return "", err
-	}
-	s.resetYjsDoc(pageID)
-	s.reindexPage(pageID)
-	s.pagesChanged()
-	return fmt.Sprintf("Restored page %s to revision %s (the previous state was saved as a new revision first, so this is reversible)", pageID, revID), nil
+	return s.mcpCreatePageChangeProposal(u, pageID, content,
+		title, fmt.Sprintf("Agent proposed restoring revision %s.", revID))
 }
 
 // --- Kommentare ------------------------------------------------------------

@@ -41,9 +41,6 @@ func (s *Server) mcpWriteContent(u *user, pageID, markdown, mode string) (string
 // --- revisions --------------------------------------------------------------
 
 // mcpRevisions replaces get_page_history, get_revision and restore_revision.
-// Restoring is in here rather than standalone because it does not destroy
-// anything: it saves the current state as a new revision first, so the restore
-// is itself reversible.
 func (s *Server) mcpRevisions(u *user, pageID, action, revisionID string, limit int) (string, error) {
 	switch action {
 	case "", "list":

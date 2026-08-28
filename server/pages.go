@@ -385,6 +385,11 @@ func (s *Server) handleUpdatePage(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, "invalid JSON")
 		return
 	}
+	if requestUser(r).TokenScope != "" && (body.Title != nil || len(body.Content) > 0) {
+		httpErrorCode(w, http.StatusForbidden, "proposal_required",
+			"Agents must create a proposed revision; the canonical document remains unchanged until a human publishes it.")
+		return
+	}
 
 	// Moving between workspaces: its own path, because the WHOLE subtree has to
 	// come along and the parent link has to go (the parent stays in the old

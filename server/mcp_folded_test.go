@@ -68,16 +68,18 @@ func TestFoldedCapabilitiesSurvived(t *testing.T) {
 		t.Errorf("favorite not stored (%d rows)", favs)
 	}
 
-	// A move and a rename in ONE call must both take effect — that is the whole
-	// point of folding them together.
 	if _, err := callTool(t, s, u, "update_page",
 		`{"page_id":"`+child+`","parent_id":"","title":"Renamed and moved"}`); err != nil {
 		t.Fatalf("move + rename: %v", err)
 	}
 	var title, par string
 	s.db.QueryRow(`SELECT title, COALESCE(parent_id,'') FROM pages WHERE id = ?`, child).Scan(&title, &par)
-	if title != "Renamed and moved" || par != "" {
-		t.Errorf("only half applied: title=%q parent=%q", title, par)
+	if title != "Child" || par != "" {
+		t.Errorf("canonical document changed before publish: title=%q parent=%q", title, par)
+	}
+	var proposalStatus string
+	if err := s.db.QueryRow(`SELECT status FROM page_change_proposals WHERE page_id = ?`, child).Scan(&proposalStatus); err != nil || proposalStatus != proposalStatusPending {
+		t.Errorf("title proposal status = %q, err=%v", proposalStatus, err)
 	}
 
 	// get_schema → get_collection, which returns schema AND views

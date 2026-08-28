@@ -133,6 +133,25 @@ export interface Revision {
   title: string;
 }
 
+export interface PageChangeProposal {
+  id: string;
+  pageId: string;
+  baseHash: string;
+  proposedContent: unknown[];
+  proposedTitle: string;
+  creatorId: string;
+  creatorType: 'human' | 'agent';
+  creatorName: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'pending' | 'published' | 'rejected' | 'superseded';
+  summary: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  rejectedAt?: string;
+  rejectedBy?: string;
+}
+
 export interface Comment {
   id: string;
   blockId: string;
