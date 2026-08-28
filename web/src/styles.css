@@ -1804,8 +1804,14 @@ button {
   background: var(--hover);
 }
 
-.proposal-dialog {
-  width: min(940px, 96vw);
+.dialog.proposal-dialog {
+  width: min(1240px, 94vw);
+  height: min(86dvh, calc(100dvh - 9dvh));
+  max-height: min(86dvh, calc(100dvh - 9dvh));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .proposal-dialog-head {
@@ -1821,15 +1827,19 @@ button {
 
 .proposal-layout {
   display: grid;
-  grid-template-columns: minmax(230px, 0.34fr) minmax(0, 0.66fr);
-  gap: 18px;
-  min-height: 390px;
+  grid-template-columns: minmax(240px, 264px) minmax(0, 1fr);
+  gap: 16px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .proposal-sidebar {
+  min-width: 0;
+  min-height: 0;
   border-right: 1px solid var(--border);
   padding-right: 14px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .proposal-list-item {
@@ -1909,7 +1919,11 @@ button {
 }
 
 .proposal-main {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .proposal-meta {
@@ -1954,8 +1968,11 @@ button {
 
 .proposal-preview,
 .proposal-diff {
-  max-height: 42vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px 14px;
@@ -2005,6 +2022,7 @@ button {
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr);
   gap: 10px;
+  min-width: 0;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
@@ -2032,9 +2050,12 @@ button {
 .proposal-diff-row del { color: var(--muted); }
 .proposal-diff-row strong { color: var(--accent); font-weight: 600; }
 .proposal-diff-type { color: var(--muted); font-size: 11px; }
+.proposal-diff-row > div { min-width: 0; overflow-wrap: anywhere; }
 
 .proposal-actions {
+  flex: 0 0 auto;
   justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .proposal-actions .btn {
@@ -2044,9 +2065,17 @@ button {
 }
 
 @media (max-width: 768px) {
+  .modal-overlay > .dialog.proposal-dialog {
+    width: 96vw;
+    height: auto;
+    max-height: calc(100dvh - 9dvh);
+    overflow-y: auto;
+  }
+
   .proposal-layout {
     grid-template-columns: 1fr;
     gap: 12px;
+    flex: none;
   }
 
   .proposal-sidebar {
@@ -2054,6 +2083,7 @@ button {
     border-bottom: 1px solid var(--border);
     padding: 0 0 10px;
     max-height: 180px;
+    overscroll-behavior: contain;
   }
 
   .proposal-list-item {
@@ -2069,7 +2099,12 @@ button {
 
   .proposal-preview,
   .proposal-diff {
+    flex: 0 1 auto;
     max-height: 38vh;
+  }
+
+  .proposal-main {
+    overflow: visible;
   }
 }
 

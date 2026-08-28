@@ -54,8 +54,11 @@ review switches from a two-column comparison to a single readable column.
 - **Accessibility:** labelled dialog, native buttons, keyboard tab order,
   visible focus, status text independent of colour.
 - **Motion:** existing 100–150ms control transitions; no decorative motion.
-- **Layout:** `stack` inside a bounded modal scroll body; the comparison
-  `switcher` collapses to one column on narrow widths.
+- **Layout:** desktop uses a wide `min(1240px, 94vw)` dialog with a compact
+  `264px` proposal navigation column and a flexing review pane. The dialog is
+  roughly `86dvh` tall; preview and diff content own their internal scroll.
+  On narrow widths, the comparison `switcher` collapses to one column and
+  returns scroll ownership to the bounded modal body.
 
 ### Status badge
 

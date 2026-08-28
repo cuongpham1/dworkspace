@@ -144,7 +144,7 @@ export default function ProposalReviewModal({
   return (
     <Portal>
       <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <div className="dialog wide proposal-dialog" role="dialog" aria-modal="true" aria-label={t('Proposed revisions')}>
+        <div className="dialog proposal-dialog" role="dialog" aria-modal="true" aria-label={t('Proposed revisions')}>
           <div className="proposal-dialog-head">
             <div>
               <h2>{t('Proposed revisions')}</h2>
@@ -188,7 +188,6 @@ export default function ProposalReviewModal({
               ) : <p className="dialog-hint">{t('Select a proposed revision to review it.')}</p>}
             </section>
           </div>
-          <button className="btn dialog-close" onClick={onClose}>{t('Close')}</button>
         </div>
       </div>
     </Portal>
