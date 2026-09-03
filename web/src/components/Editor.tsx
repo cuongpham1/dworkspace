@@ -60,6 +60,7 @@ export interface EditorProps {
   // the one menu every page has, so it is the honest place for it.
   onTrash: (id: string) => void;
   onPagesChanged: () => void;
+  initialProposalId?: string;
 }
 
 export default function Editor(props: EditorProps) {
@@ -421,6 +422,7 @@ function PageHeader({
   commentsOpen,
   onToggleComments,
   children,
+  initialProposalId,
 }: EditorProps & {
   page: Page;
   onLocalMeta: (patch: Partial<PageMeta>) => void;
@@ -453,7 +455,7 @@ function PageHeader({
   useMenuDismiss(shareOpen, shareWrapRef, () => setShareOpen(false));
   useMenuDismiss(overflowOpen, overflowWrapRef, () => setOverflowOpen(false));
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [proposalsOpen, setProposalsOpen] = useState(false);
+  const [proposalsOpen, setProposalsOpen] = useState(!!initialProposalId);
   const [openComments, setOpenComments] = useState(0);
   // Same rule as in Editor, and it has to be asked here too: this is where the
   // button, the menu entries and the count live.
@@ -1049,6 +1051,7 @@ function PageHeader({
         {proposalsOpen && (
           <ProposalReviewModal
             pageId={pageId}
+            initialProposalId={initialProposalId}
             canonicalContent={page.content}
             canonicalTitle={page.title}
             canEdit={canEdit}

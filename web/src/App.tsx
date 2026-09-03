@@ -76,6 +76,12 @@ function pageIdFromLocation(): string | null {
   return m ? m[1] : null;
 }
 
+function proposalIdFromLocation(): string | null {
+  if (!pageIdFromLocation()) return null;
+  const id = new URLSearchParams(window.location.search).get('proposals');
+  return id && /^[0-9a-f]+$/.test(id) ? id : null;
+}
+
 type Theme = 'light' | 'dark';
 
 export default function App() {
@@ -1006,6 +1012,7 @@ export default function App() {
               onCreatePage={createPage}
               onTrash={trashPage}
               onPagesChanged={loadPages}
+              initialProposalId={proposalIdFromLocation() ?? undefined}
             />
           </>
         ) : workspaces.length === 0 ? (

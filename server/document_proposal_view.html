@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VUS proposed revision</title>
+<style>
+:root{color-scheme:light dark;--bg:#fffdf8;--panel:#fff;--ink:#1b1b1b;--muted:#6c6a64;--line:#e7e1d8;--accent:#1264a3;--accent-soft:#e7f2fb;--danger:#a52b2b;--danger-soft:#fbeaea;--ok:#2f7041;--warn:#8a5b00;font:14px/1.5 Inter,ui-sans-serif,system-ui,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#171717;--panel:#222;--ink:#f5f1e9;--muted:#aaa49a;--line:#3b3935;--accent:#80bfff;--accent-soft:#14324b;--danger:#ff9d9d;--danger-soft:#4a2424;--ok:#9bd4a6;--warn:#f0c66e}}
+:root[data-theme="dark"]{--bg:#171717;--panel:#222;--ink:#f5f1e9;--muted:#aaa49a;--line:#3b3935;--accent:#80bfff;--accent-soft:#14324b;--danger:#ff9d9d;--danger-soft:#4a2424;--ok:#9bd4a6;--warn:#f0c66e}:root[data-theme="light"]{--bg:#fffdf8;--panel:#fff;--ink:#1b1b1b;--muted:#6c6a64;--line:#e7e1d8;--accent:#1264a3;--accent-soft:#e7f2fb;--danger:#a52b2b;--danger-soft:#fbeaea;--ok:#2f7041;--warn:#8a5b00}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}main{max-width:960px;margin:auto;padding:20px}header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:16px}h1,h2,p{margin:0}h1{font-size:20px;line-height:1.2}h2{font-size:15px}.eyebrow{color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}.summary{color:var(--muted);margin-top:7px;max-width:680px}.status{border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;white-space:nowrap}.pending{color:var(--warn);background:#fff7db}.published{color:var(--ok);background:#e9f7ec}.rejected,.superseded{color:var(--danger);background:var(--danger-soft)}@media(prefers-color-scheme:dark){.pending{background:#473b18}.published{background:#1e3d25}}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--muted);font-size:12px;padding:14px 0}.meta strong{color:var(--ink);font-weight:600}.warning{display:none;border:1px solid var(--danger);border-radius:12px;background:var(--danger-soft);color:var(--danger);padding:11px 13px;margin-bottom:16px}.warning.visible{display:block}.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}.panel{min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}.panel-head{display:flex;justify-content:space-between;gap:10px;align-items:center;border-bottom:1px solid var(--line);padding:11px 13px}.panel-body{padding:13px}.block{border-left:3px solid transparent;padding:7px 9px;margin:0 0 7px;background:var(--bg);white-space:pre-wrap;overflow-wrap:anywhere}.block:last-child{margin-bottom:0}.block.added{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 11%,var(--bg))}.block.removed{border-color:var(--danger);background:var(--danger-soft);text-decoration:line-through}.block.changed{border-color:var(--accent);background:var(--accent-soft)}.empty{color:var(--muted);font-style:italic}.actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:16px}.actions button{border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:#fff;padding:8px 12px;font:inherit;font-weight:650;cursor:pointer}.actions button.secondary{background:transparent;color:var(--accent)}button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:2px}.note{color:var(--muted);font-size:12px}details summary{cursor:pointer;list-style:none}details summary::-webkit-details-marker{display:none}
+@media(max-width:650px){main{padding:14px}header{display:block}.status{display:inline-block;margin-top:12px}.meta{display:grid;grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite"><p class="eyebrow">VUS · Proposed revision</p><p id="loading" class="note">Waiting for proposal data…</p></main>
+<script>
+(() => {
+  "use strict";
+  const app = document.getElementById("app");
+  const pending = new Map();
+  const state = { context: {}, result: null };
+  let nextId = 1;
+  const text = value => typeof value === "string" ? value : "";
+  const request = (method, params) => new Promise((resolve, reject) => {
+    const id = nextId++;
+    pending.set(id, { resolve, reject });
+    window.parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+  });
+  const notify = (method, params) => window.parent.postMessage({ jsonrpc: "2.0", method, params }, "*");
+  const parseBlocks = value => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== "string") return [];
+    try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; }
+    catch (error) { return []; }
+  };
+  const blockText = block => {
+    const content = Array.isArray(block && block.content) ? block.content : [];
+    return content.map(item => text(item && item.text)).join("") || text(block && block.type);
+  };
+  const addBlock = (parent, value, kind) => {
+    const node = document.createElement("div");
+    node.className = "block" + (kind ? " " + kind : "");
+    node.textContent = value || "(empty block)";
+    parent.appendChild(node);
+  };
+  const showBlocks = (parent, blocks, kind) => {
+    if (!blocks.length) { parent.innerHTML = "<p class=\"empty\">No blocks</p>"; return; }
+    blocks.forEach(block => addBlock(parent, blockText(block), kind));
+  };
+  const sameBlock = (left, right) => text(left && left.id) === text(right && right.id) && blockText(left) === blockText(right);
+  const showDiff = (parent, canonical, proposed) => {
+    const max = Math.max(canonical.length, proposed.length); let changes = 0;
+    for (let index = 0; index < max; index += 1) {
+      const oldBlock = canonical[index]; const newBlock = proposed[index];
+      if (oldBlock && newBlock && sameBlock(oldBlock, newBlock)) continue;
+      changes += 1;
+      if (oldBlock && newBlock) { addBlock(parent, "Before: " + blockText(oldBlock), "changed"); addBlock(parent, "After: " + blockText(newBlock), "changed"); }
+      else if (newBlock) addBlock(parent, "Added: " + blockText(newBlock), "added");
+      else addBlock(parent, "Removed: " + blockText(oldBlock), "removed");
+    }
+    if (!changes) parent.innerHTML = "<p class=\"empty\">No changed blocks</p>";
+  };
+  const setTheme = context => {
+    if (context && (context.theme === "dark" || context.theme === "light")) document.documentElement.dataset.theme = context.theme;
+    const variables = context && context.styles && context.styles.variables;
+    if (variables && typeof variables === "object") Object.entries(variables).forEach(([key, value]) => { if (typeof value === "string") document.documentElement.style.setProperty(key, value); });
+  };
+  const handoff = () => {
+    const data = state.result || {}; const url = text(data.reviewUrl);
+    if (url) request("ui/open-link", { url }).catch(error => { notify("ui/message", { role: "user", content: { type: "text", text: "Open VUS to review and approve this proposed revision." } }); });
+    else notify("ui/message", { role: "user", content: { type: "text", text: "Open the authenticated VUS page to review and publish or reject this proposed revision. MCP Apps never approves revisions directly." } });
+  };
+  const refresh = () => {
+    const proposal = state.result && state.result.proposal;
+    if (!proposal) return;
+    request("tools/call", { name: "proposals", arguments: { page_id: text(proposal.pageId), action: "get", proposal_id: text(proposal.id) } }).then(render).catch(error => notify("notifications/message", { level: "warning", data: "VUS could not refresh this proposal." }));
+  };
+  const renderList = proposals => {
+    app.innerHTML = "<p class=\"eyebrow\">VUS · Proposed revisions</p><h1>Review queue</h1><p class=\"summary\">Pending and terminal proposal history. Select a revision to inspect its preview and changed blocks.</p>";
+    const list = document.createElement("section"); list.className = "panel"; list.style.marginTop = "16px";
+    proposals.forEach(proposal => {
+      const row = document.createElement("div"); row.className = "panel-head"; row.style.borderBottom = "1px solid var(--line)";
+      const copy = document.createElement("div"); const title = document.createElement("h2"); title.textContent = text(proposal.proposedTitle) || "Untitled document"; const detail = document.createElement("p"); detail.className = "note"; detail.textContent = text(proposal.creatorName) + " · " + text(proposal.status) + " · " + text(proposal.createdAt); copy.append(title, detail);
+      const button = document.createElement("button"); button.type = "button"; button.className = "secondary"; button.textContent = "Review"; button.addEventListener("click", () => request("tools/call", { name: "proposals", arguments: { page_id: text(proposal.pageId), action: "get", proposal_id: text(proposal.id) } }).then(render).catch(error => notify("notifications/message", { level: "warning", data: "VUS could not load this proposal." })));
+      row.append(copy, button); list.appendChild(row);
+    });
+    if (!proposals.length) { const empty = document.createElement("p"); empty.className = "panel-body empty"; empty.textContent = "No proposals"; list.appendChild(empty); }
+    app.appendChild(list);
+  };
+  const render = result => {
+    const envelope = result && typeof result === "object" ? result : {};
+    state.result = envelope.structuredContent && typeof envelope.structuredContent === "object" ? envelope.structuredContent : envelope;
+    if (!state.result.proposal && Array.isArray(state.result.proposals)) { renderList(state.result.proposals); return; }
+    const proposal = state.result.proposal || state.result;
+    const canonical = state.result.canonical || {};
+    const proposed = parseBlocks(proposal.proposedContent); const current = parseBlocks(canonical.content);
+    const stale = canonical.hash && proposal.baseHash && canonical.hash !== proposal.baseHash;
+    const status = text(proposal.status) || "pending";
+    app.innerHTML = "";
+    const header = document.createElement("header");
+    header.innerHTML = "<div><p class=\"eyebrow\">VUS · Proposed revision</p><h1></h1><p class=\"summary\"></p></div><span class=\"status\"></span>";
+    header.querySelector("h1").textContent = text(proposal.proposedTitle) || text(canonical.title) || "Untitled document";
+    header.querySelector(".summary").textContent = text(proposal.summary) || "No summary provided.";
+    const badge = header.querySelector(".status"); badge.textContent = status; badge.className = "status " + status; app.appendChild(header);
+    const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = "<span>Creator <strong></strong></span><span>Created <strong></strong></span><span>Page <strong></strong></span>";
+    const values = [text(proposal.creatorName) + (text(proposal.creatorType) ? " · " + text(proposal.creatorType) : ""), text(proposal.createdAt) || "Unknown", text(proposal.pageId)];
+    meta.querySelectorAll("strong").forEach((node, index) => { node.textContent = values[index]; }); app.appendChild(meta);
+    const warning = document.createElement("div"); warning.className = "warning" + (stale ? " visible" : ""); warning.setAttribute("role", "alert"); warning.textContent = "This proposal is stale: the canonical document changed after it was created. VUS will refuse to overwrite the newer version."; app.appendChild(warning);
+    const grid = document.createElement("section"); grid.className = "grid";
+    const preview = document.createElement("article"); preview.className = "panel"; preview.innerHTML = "<div class=\"panel-head\"><h2>Proposed preview</h2><span class=\"eyebrow\">full document</span></div><div class=\"panel-body\"></div>"; showBlocks(preview.querySelector(".panel-body"), proposed, "");
+    const diff = document.createElement("article"); diff.className = "panel"; diff.innerHTML = "<div class=\"panel-head\"><h2>Changes only</h2><span class=\"eyebrow\">block-aware</span></div><div class=\"panel-body\"></div>"; showDiff(diff.querySelector(".panel-body"), current, proposed);
+    grid.append(preview, diff); app.appendChild(grid);
+    const context = document.createElement("details"); context.className = "panel"; context.style.marginTop = "14px"; context.innerHTML = "<summary class=\"panel-head\">Canonical context</summary><div class=\"panel-body\"></div>"; showBlocks(context.querySelector(".panel-body"), current, ""); app.appendChild(context);
+    const actions = document.createElement("div"); actions.className = "actions"; actions.innerHTML = "<button type=\"button\" class=\"secondary\" id=\"open-vus\">Open VUS review</button><button type=\"button\" class=\"secondary\" id=\"refresh\">Refresh current state</button><span class=\"note\">Publishing and rejecting require an authenticated human VUS session.</span>"; actions.querySelector("#open-vus").addEventListener("click", handoff); actions.querySelector("#refresh").addEventListener("click", refresh); app.appendChild(actions);
+  };
+  window.addEventListener("message", event => {
+    if (event.source !== window.parent || !event.data || typeof event.data !== "object") return;
+    const message = event.data;
+    if (message.id !== undefined && pending.has(message.id)) { const call = pending.get(message.id); pending.delete(message.id); if (message.error) call.reject(new Error(text(message.error.message) || "Host request failed")); else call.resolve(message.result || {}); return; }
+    if (message.method === "ui/resource-teardown" && message.id !== undefined) { window.parent.postMessage({ jsonrpc: "2.0", id: message.id, result: {} }, "*"); return; }
+    if (message.method === "ui/notifications/tool-result") render(message.params);
+    if (message.method === "ui/notifications/tool-cancelled") { app.innerHTML = "<p class=\"error\" role=\"alert\">The proposal tool call was cancelled before review data arrived.</p>"; }
+    if (message.method === "ui/notifications/host-context-changed") { Object.assign(state.context, message.params || {}); setTheme(state.context); }
+  });
+  const boot = async () => {
+    try { const response = await request("ui/initialize", { protocolVersion: "2026-01-26", appCapabilities: { availableDisplayModes: ["inline", "fullscreen"] }, appInfo: { name: "dworkspace-document-proposal-view", version: "1.0.0" } }); state.context = response.hostContext || {}; setTheme(state.context); notify("ui/notifications/initialized", {}); }
+    catch (error) { document.getElementById("loading").textContent = "Proposal view is ready; waiting for a compatible MCP Apps host."; }
+  };
+  if (window.ResizeObserver) new ResizeObserver(entries => { const entry = entries[0]; if (entry) notify("ui/notifications/size-changed", { width: Math.ceil(entry.contentRect.width), height: Math.ceil(entry.contentRect.height) }); }).observe(document.body);
+  boot();
+})();
+</script>
+</body>
+</html>

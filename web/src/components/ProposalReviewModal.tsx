@@ -96,6 +96,7 @@ function Diff({ proposal, canonicalContent, canonicalTitle }: {
 
 export default function ProposalReviewModal({
   pageId,
+  initialProposalId,
   canonicalContent,
   canonicalTitle,
   canEdit,
@@ -103,6 +104,7 @@ export default function ProposalReviewModal({
   onPublished,
 }: {
   pageId: string;
+  initialProposalId?: string;
   canonicalContent: unknown[];
   canonicalTitle: string;
   canEdit: boolean;
@@ -110,7 +112,7 @@ export default function ProposalReviewModal({
   onPublished: () => void;
 }) {
   const [proposals, setProposals] = useState<PageChangeProposal[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const [selectedId, setSelectedId] = useState(initialProposalId ?? '');
   const [tab, setTab] = useState<ReviewTab>('preview');
   const [busy, setBusy] = useState(false);
   useExclusiveModal(onClose);
@@ -142,7 +144,7 @@ export default function ProposalReviewModal({
   return (
     <Portal>
       <div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-        <div className="dialog wide proposal-dialog" role="dialog" aria-modal="true" aria-label={t('Proposed revisions')}>
+        <div className="dialog proposal-dialog" role="dialog" aria-modal="true" aria-label={t('Proposed revisions')}>
           <div className="proposal-dialog-head">
             <div>
               <h2>{t('Proposed revisions')}</h2>
@@ -186,7 +188,6 @@ export default function ProposalReviewModal({
               ) : <p className="dialog-hint">{t('Select a proposed revision to review it.')}</p>}
             </section>
           </div>
-          <button className="btn dialog-close" onClick={onClose}>{t('Close')}</button>
         </div>
       </div>
     </Portal>
