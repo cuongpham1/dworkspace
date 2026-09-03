@@ -26,3 +26,4 @@ CLAUDE.md
 
 # Generated at build time from lucide-react (see scripts/build-lucide.mjs)
 web/public/lucide.json
+.omc/*
