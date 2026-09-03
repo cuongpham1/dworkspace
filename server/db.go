@@ -353,6 +353,94 @@ CREATE TABLE IF NOT EXISTS comments (
 	resolved_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_comment_page ON comments(page_id, created_at);
+-- The skill control plane (see skills_model.go).
+--
+-- Its own tables rather than pages with a status property, and that is the
+-- security decision the whole feature rests on. A page is UNTRUSTED content: an
+-- agent reads it fenced as data, anybody who can write a page can put
+-- "ignore your instructions" in one, and a collection's "Status" column is a
+-- label somebody typed. If trust were a field on a page, then editing that
+-- field — or knowing a page id — would be the whole attack.
+--
+-- So a skill is a separate entity with its own lifecycle, and text becomes
+-- trusted only as an approved skill_versions row. There is deliberately no
+-- column here that points at a page, and no code path that turns one into
+-- either of these tables.
+CREATE TABLE IF NOT EXISTS skills (
+	id TEXT PRIMARY KEY,
+	workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+	slug TEXT NOT NULL,
+	name TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	owner_id TEXT NOT NULL DEFAULT '',
+	-- The published pointer. NULL means nothing is live: never approved, or the
+	-- published version was deprecated without a replacement. The runtime reads
+	-- ONLY through this pointer, which is why approving has to move it in the
+	-- same transaction that flips the version's status.
+	current_version_id TEXT,
+	current_version_number INTEGER NOT NULL DEFAULT 0,
+	lifecycle_status TEXT NOT NULL DEFAULT 'draft',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL
+);
+-- One slug per workspace: the slug is what an agent and an audit row name.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_skill_slug ON skills(workspace_id, slug);
+CREATE INDEX IF NOT EXISTS idx_skill_ws ON skills(workspace_id, updated_at);
+CREATE TABLE IF NOT EXISTS skill_versions (
+	id TEXT PRIMARY KEY,
+	skill_id TEXT NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+	version INTEGER NOT NULL,
+	delivery_mode TEXT NOT NULL DEFAULT 'remote' CHECK(delivery_mode IN ('remote', 'client')),
+	status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'pending', 'approved', 'deprecated')),
+	description TEXT NOT NULL DEFAULT '',
+	triggers TEXT NOT NULL DEFAULT '[]',
+	instructions TEXT NOT NULL DEFAULT '',
+	-- "refs", not "references": the latter is a reserved word in SQL.
+	refs TEXT NOT NULL DEFAULT '[]',
+	dependencies TEXT NOT NULL DEFAULT '[]',
+	scope TEXT NOT NULL DEFAULT '{}',
+	package_metadata TEXT NOT NULL DEFAULT '{}',
+	review_note TEXT NOT NULL DEFAULT '',
+	created_by TEXT NOT NULL DEFAULT '',
+	approved_by TEXT,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	submitted_at TEXT,
+	approved_at TEXT,
+	deprecated_at TEXT,
+	content_hash TEXT NOT NULL DEFAULT '',
+	UNIQUE (skill_id, version)
+);
+CREATE INDEX IF NOT EXISTS idx_skill_version_status ON skill_versions(status, skill_id, version);
+-- What agents actually did with the library. Separate from audit_log because
+-- the questions are different: audit_log answers "who changed this page", this
+-- answers "which task used which skill at which exact version and hash", and
+-- the columns for the second do not exist in the first.
+--
+-- task_ref holds a DIGEST of the task text, never the text. "Which task used
+-- this skill" is answerable by comparing digests; the prompt itself is nobody's
+-- business (see taskFingerprint).
+CREATE TABLE IF NOT EXISTS skill_audit (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	created_at TEXT NOT NULL,
+	workspace_id TEXT NOT NULL DEFAULT '',
+	skill_id TEXT NOT NULL,
+	skill_version_id TEXT NOT NULL DEFAULT '',
+	version_number INTEGER NOT NULL DEFAULT 0,
+	delivery_mode TEXT NOT NULL DEFAULT '',
+	action TEXT NOT NULL,
+	agent_type TEXT NOT NULL DEFAULT '',
+	project_ref TEXT NOT NULL DEFAULT '',
+	task_ref TEXT NOT NULL DEFAULT '',
+	resolution_reason TEXT NOT NULL DEFAULT '',
+	missing_dependencies TEXT NOT NULL DEFAULT '[]',
+	content_hash TEXT NOT NULL DEFAULT '',
+	actor_user_id TEXT NOT NULL DEFAULT '',
+	actor_name TEXT NOT NULL DEFAULT '',
+	actor_type TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_skill_audit_skill ON skill_audit(skill_id, id);
+CREATE INDEX IF NOT EXISTS idx_skill_audit_ws ON skill_audit(workspace_id, id);
 `
 
 // ensureColumn adds a column to an existing table if it is missing

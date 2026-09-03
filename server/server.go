@@ -342,8 +342,45 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	m.HandleFunc("POST /desktop/approve", s.handleDesktopApprove)
 	m.HandleFunc("POST /api/desktop/exchange", s.handleDesktopExchange)
 
-	// The agent skill, generated for this instance (see skill.go).
+	// The agent skill, generated for this instance (see skill.go). This is the
+	// BOOTSTRAP bundle — the one a person downloads once per repository so an
+	// agent knows this instance exists at all. It is deliberately NOT the same
+	// thing as the per-skill Client Skill packages below, and it does not carry
+	// the workspace's skill library: the library changes, a downloaded zip does
+	// not, so the bundle teaches an agent to ASK instead of remembering.
 	m.HandleFunc("GET /api/skill", s.auth(s.handleSkill))
+
+	// The skill control plane (skills_http.go). Reading is open to any
+	// credential the workspace admits, including an API token: browsing,
+	// resolving, fetching approved instructions and downloading an approved
+	// package are all things a working agent legitimately needs.
+	//
+	// Every WRITE is sessionOnly, which is the same judgement workspace rules
+	// are held to (see /api/workspaces/{id}/rules) and for the same reason: an
+	// approved Remote Skill is text agents follow, so an agent's own credential
+	// must not be able to author, submit, approve or deprecate one. An agent
+	// that can rewrite its own instructions has none.
+	//
+	// The literal segments (review-queue, resolve-test) are registered
+	// alongside the {skillId} routes; Go's ServeMux prefers the more specific
+	// pattern, so "review-queue" is never parsed as a skill id.
+	m.HandleFunc("GET /api/skills", s.auth(s.handleListSkills))
+	m.HandleFunc("POST /api/skills", s.auth(s.sessionOnly(s.handleCreateSkill)))
+	m.HandleFunc("GET /api/skills/review-queue", s.auth(s.handleSkillReviewQueue))
+	m.HandleFunc("POST /api/skills/resolve-test", s.auth(s.handleSkillResolveTest))
+	m.HandleFunc("POST /api/skills/adopt-page", s.auth(s.sessionOnly(s.handleAdoptLegacySkill)))
+	m.HandleFunc("GET /api/skills/{skillId}", s.auth(s.handleGetSkill))
+	m.HandleFunc("GET /api/skills/{skillId}/audit", s.auth(s.handleSkillAudit))
+	m.HandleFunc("GET /api/skills/{skillId}/versions", s.auth(s.handleListSkillVersions))
+	m.HandleFunc("POST /api/skills/{skillId}/versions", s.auth(s.sessionOnly(s.handleCreateSkillVersion)))
+	m.HandleFunc("GET /api/skills/{skillId}/versions/{versionId}", s.auth(s.handleGetSkillVersion))
+	m.HandleFunc("PATCH /api/skills/{skillId}/versions/{versionId}", s.auth(s.sessionOnly(s.handleUpdateSkillVersion)))
+	m.HandleFunc("POST /api/skills/{skillId}/versions/{versionId}/submit", s.auth(s.sessionOnly(s.handleSubmitSkillVersion)))
+	m.HandleFunc("POST /api/skills/{skillId}/versions/{versionId}/request-changes", s.auth(s.sessionOnly(s.handleRequestSkillChanges)))
+	m.HandleFunc("POST /api/skills/{skillId}/versions/{versionId}/approve", s.auth(s.sessionOnly(s.handleApproveSkillVersion)))
+	m.HandleFunc("POST /api/skills/{skillId}/versions/{versionId}/deprecate", s.auth(s.sessionOnly(s.handleDeprecateSkillVersion)))
+	m.HandleFunc("GET /api/skills/{skillId}/versions/{versionId}/package", s.auth(s.handleSkillPackage))
+	m.HandleFunc("GET /api/skills/{skillId}/versions/{versionId}/package-info", s.auth(s.handleSkillPackageInfo))
 
 	m.HandleFunc("GET /api/events", s.auth(s.handleEvents))
 	m.HandleFunc("GET /api/presence", s.auth(s.handlePresence))
