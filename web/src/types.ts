@@ -429,3 +429,260 @@ export type UpdateInfo = {
   checkedAt?: string;
   enabled: boolean;
 };
+
+// ---- the skill control plane (server/skills_model.go) ----
+//
+// Two things are worth knowing before reading these.
+//
+// A skill's DELIVERY MODE says what it is: `remote` is behaviour — instructions
+// VUS hands an agent for the current task, no install anywhere. `client` is
+// capability — a package with scripts or assets that has to exist in the
+// runtime. One library, one review path, two ways out.
+//
+// A skill's STATUS is trust. Only an `approved` version is ever given to an
+// agent, and only through the trusted path. A draft is inert, and the editor
+// says so out loud, because "I wrote it down" and "the workspace agreed to it"
+// are different things and confusing them is how a control plane becomes a
+// liability.
+
+export type SkillDelivery = 'remote' | 'client';
+export type SkillStatus = 'draft' | 'pending' | 'approved' | 'deprecated';
+
+export interface SkillDependency {
+  type: 'client_skill' | 'capability' | 'tool' | 'connector';
+  id: string;
+  versionConstraint?: string;
+  required: boolean;
+  fallback?: string;
+}
+
+/** A pointer, never inlined content. Whatever a reference points at is fetched
+ *  through the ordinary read path and stays untrusted. */
+export interface SkillReference {
+  kind: 'page' | 'url' | 'note';
+  target: string;
+  label?: string;
+}
+
+/** Where a version may be selected. Every list is "empty means anywhere"; a
+ *  non-empty list is a restriction, and a restriction the runtime cannot answer
+ *  counts as a miss. */
+export interface SkillScope {
+  workspaceId: string;
+  projectIds?: string[];
+  repositoryPatterns?: string[];
+  roles?: string[];
+  taskTypes?: string[];
+  agentTypes?: string[];
+}
+
+export interface SkillPackedFile {
+  name: string;
+  content: string;
+}
+
+export interface SkillPackageMetadata {
+  entrypoint?: string;
+  scripts?: SkillPackedFile[];
+  assets?: SkillPackedFile[];
+}
+
+export interface Skill {
+  id: string;
+  workspaceId: string;
+  slug: string;
+  name: string;
+  description: string;
+  ownerId: string;
+  ownerName?: string;
+  lifecycleStatus: SkillStatus;
+  /** Empty when nothing is live: never approved, or the published version was
+   *  deprecated with no replacement. */
+  currentVersionId?: string;
+  currentVersion?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillVersion {
+  id: string;
+  skillId: string;
+  version: number;
+  deliveryMode: SkillDelivery;
+  status: SkillStatus;
+  description: string;
+  triggers: string[];
+  instructions: string;
+  references: SkillReference[];
+  dependencies: SkillDependency[];
+  scope: SkillScope;
+  packageMetadata: SkillPackageMetadata;
+  /** What a reviewer said when they sent it back. Shown in the editor. */
+  reviewNote?: string;
+  createdBy: string;
+  createdByName?: string;
+  approvedBy?: string;
+  approvedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  deprecatedAt?: string;
+  contentHash: string;
+  published: boolean;
+}
+
+export interface SkillListEntry extends Skill {
+  delivery: SkillDelivery;
+  draftVersion?: number;
+  pendingVersion?: number;
+  triggers: string[];
+  scopeSummary: string[];
+  dependencyIssues: string[];
+  versionCount: number;
+  canReview: boolean;
+  canAuthor: boolean;
+}
+
+export interface SkillDetail {
+  skill: Skill;
+  versions: SkillVersion[];
+  current?: SkillVersion;
+  draft?: SkillVersion;
+  pending?: SkillVersion;
+  canReview: boolean;
+  canAuthor: boolean;
+}
+
+export interface SkillReviewEntry {
+  skill: Skill;
+  version: SkillVersion;
+  previous?: SkillVersion;
+  /** Deterministic flags, computed by comparing two stored versions — never a
+   *  model's guess. serverErrors-style codes so the interface can translate. */
+  risks: string[];
+  canReview: boolean;
+  firstPublish: boolean;
+}
+
+export interface SkillScoreReason {
+  code: string;
+  label: string;
+  points: number;
+}
+
+export interface SkillMissingDependency {
+  type: string;
+  id: string;
+  versionConstraint?: string;
+  required: boolean;
+  fallback?: string;
+  detail: string;
+}
+
+export interface SkillResolvedEntry {
+  skillId: string;
+  slug: string;
+  name: string;
+  description: string;
+  version: number;
+  versionId: string;
+  deliveryMode: SkillDelivery;
+  contentHash: string;
+  score: number;
+  reasons: SkillScoreReason[];
+  missingDependencies?: SkillMissingDependency[];
+  dependencies?: SkillDependency[];
+}
+
+export interface SkillExcludedEntry {
+  skillId: string;
+  slug: string;
+  name: string;
+  version: number;
+  deliveryMode: SkillDelivery;
+  reason: string;
+  reasonCode: string;
+  missingDependencies?: SkillMissingDependency[];
+}
+
+/** What POST /api/skills/resolve-test answers — the SAME shape MCP's
+ *  skill_resolve returns, because it is the same function. The scoring is never
+ *  reimplemented here. */
+export interface SkillResolveResult {
+  selected: SkillResolvedEntry[];
+  excluded: SkillExcludedEntry[];
+  considered: number;
+}
+
+export interface SkillAuditEntry {
+  id: number;
+  createdAt: string;
+  workspaceId: string;
+  skillId: string;
+  skillVersionId?: string;
+  versionNumber?: number;
+  deliveryMode?: SkillDelivery;
+  action: string;
+  agentType?: string;
+  projectRef?: string;
+  /** A digest of the task, never the task text. */
+  taskRef?: string;
+  resolutionReason?: string;
+  missingDependencies?: string[];
+  contentHash?: string;
+  actorUserId?: string;
+  actorName?: string;
+  actorType?: string;
+}
+
+export interface SkillPackageInfo {
+  manifest: {
+    skill_id: string;
+    slug: string;
+    name: string;
+    version: number;
+    content_hash: string;
+    delivery_mode: SkillDelivery;
+    description: string;
+    dependencies: SkillDependency[];
+    entrypoint?: string;
+  };
+  files: { name: string; size: number }[];
+  archiveHash: string;
+  sizeBytes: number;
+  downloadUrl?: string;
+  fileName: string;
+}
+
+/** The authoring form's payload. Every field optional: a PATCH that mentions
+ *  only the instructions must leave the scope alone rather than clearing it. */
+export interface SkillDraftPayload {
+  workspaceId?: string;
+  name?: string;
+  slug?: string;
+  description?: string;
+  deliveryMode?: SkillDelivery;
+  instructions?: string;
+  triggers?: string[];
+  references?: SkillReference[];
+  dependencies?: SkillDependency[];
+  scope?: SkillScope;
+  packageMetadata?: SkillPackageMetadata;
+  updatedAt?: string;
+  fromVersion?: string;
+  note?: string;
+}
+
+export interface SkillResolveInput {
+  workspaceId?: string;
+  task: string;
+  project?: string;
+  repository?: string;
+  role?: string;
+  taskType?: string;
+  agent?: string;
+  capabilities?: string[];
+  installedClientSkills?: { id: string; version?: string }[];
+  limit?: number;
+}

@@ -17,10 +17,11 @@ import AgentConnectModal from './AgentConnect';
 import BreakGlassLog from './BreakGlassLog';
 import TemplateGallery from './TemplateGallery';
 import BlueprintLibrary from './BlueprintLibrary';
+import { openSkills } from './SkillsApp';
 import WorkspaceSettings from './WorkspaceSettings';
 import StrandedWorkspaces from './StrandedWorkspaces';
 import { useExclusiveModal, useMenuDismiss } from '../modal';
-import { Sun, Moon, Search, Library, Plus, Table2, FileText, Trash2, LayoutTemplate, Tag, ChevronRight, ChevronDown, Users, Check, Download, Upload, Image, PanelLeftClose, PanelLeftOpen, Pencil, Star, ShieldAlert, ScrollText, Paperclip, SquareArrowOutUpRight, Copy, CornerUpRight, CornerLeftUp, Undo2, X, MoreHorizontal, Settings2 } from 'lucide-react';
+import { Sun, Moon, Search, Library, Sparkles, Plus, Table2, FileText, Trash2, LayoutTemplate, Tag, ChevronRight, ChevronDown, Users, Check, Download, Upload, Image, PanelLeftClose, PanelLeftOpen, Pencil, Star, ShieldAlert, ScrollText, Paperclip, SquareArrowOutUpRight, Copy, CornerUpRight, CornerLeftUp, Undo2, X, MoreHorizontal, Settings2 } from 'lucide-react';
 import { AgentDot } from './AgentBadge';
 import { tagColorClass } from '../tags';
 import { childrenForSection, topLevelForDocs } from '../treeMode';
@@ -1197,6 +1198,16 @@ export default function Sidebar({
           />
         </div>
         <div className="sidebar-header-actions">
+          {/* Skills has its own entry rather than living inside the page tree:
+              it is not a document, and finding it by browsing a tree is exactly
+              the problem the specialised screens exist to solve. */}
+          <button
+            className="icon-btn"
+            title={t('Skills — what agents are allowed to follow')}
+            onClick={openSkills}
+          >
+            <Sparkles size={17} />
+          </button>
           <button className="icon-btn" title={t('Library — every page')} onClick={onOpenIndex}>
             <Library size={17} />
           </button>

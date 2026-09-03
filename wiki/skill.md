@@ -12,6 +12,14 @@ This page is for the person who downloads it and for the agent that reads it.
 Connecting an agent in the first place is [Agents](agents.md); what the tools do
 is [MCP tools](mcp-tools.md).
 
+**This is not the same thing as [Skills](skills.md).** That is the workspace's
+library of reviewed instructions, versioned and delivered live to whichever agent
+needs them. This bundle is the one-off introduction to the instance, and it
+deliberately does not contain the library: a zip gets committed to a repository
+and then never changes, while the library does. What it carries instead is the
+instruction to ASK — resolve the applicable skill for the task at hand, fetch
+that exact version, follow it.
+
 ## What it is
 
 A file named `dworkspace-skill.zip`, generated at the moment you press the button.

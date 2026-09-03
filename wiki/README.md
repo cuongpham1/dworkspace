@@ -73,6 +73,7 @@ lying and `web/scripts/shoot-wiki.mjs` retakes them.
 
 - [Agents](agents.md) — what MCP is, how to connect, what an agent can and cannot do
 - [MCP tools](mcp-tools.md) — the complete reference, one section per tool
+- [Skills](skills.md) — the reviewed instructions agents follow, their versions, and the trusted path that delivers them
 - [Agent access](agent-access.md) — tokens versus sign-in, and what a workspace allows
 - [The agent skill](skill.md) — the instruction bundle an instance writes for itself
 

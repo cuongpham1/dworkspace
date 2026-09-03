@@ -12,6 +12,16 @@ import type {
   PublicFormConfig,
   DworkspaceFile,
   SearchResult,
+  Skill,
+  SkillAuditEntry,
+  SkillDetail,
+  SkillDraftPayload,
+  SkillListEntry,
+  SkillPackageInfo,
+  SkillResolveInput,
+  SkillResolveResult,
+  SkillReviewEntry,
+  SkillVersion,
   UpdateInfo,
   User,
   Webhook,
@@ -566,6 +576,84 @@ export const api = {
     req<{ ok: boolean }>(`/api/workspaces/${id}/rules`, { method: 'PUT', body: JSON.stringify({ rules }) }),
   dismissRulesProposal: (id: string) =>
     req<{ ok: boolean }>(`/api/workspaces/${id}/rules-proposal`, { method: 'DELETE' }),
+  // ---- the skill control plane (server/skills_http.go) ----
+  //
+  // Note what is NOT here: nothing that scores or ranks a skill. `resolveSkills`
+  // posts the context and renders whatever the backend answers, so the Resolver
+  // test screen and an agent's skill_resolve can never disagree. A second
+  // implementation in TypeScript would agree on the day it was written and drift
+  // from then on, which would make the screen worse than useless — it would be
+  // confidently wrong about which skill an agent gets.
+  listSkills: (filters: {
+    workspace?: string;
+    q?: string;
+    delivery?: string;
+    status?: string;
+    owner?: string;
+  }) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+    return req<SkillListEntry[]>('/api/skills?' + params.toString());
+  },
+  getSkill: (skillId: string) => req<SkillDetail>(`/api/skills/${skillId}`),
+  skillReviewQueue: (workspace?: string) =>
+    req<SkillReviewEntry[]>(
+      '/api/skills/review-queue' + (workspace ? `?workspace=${encodeURIComponent(workspace)}` : ''),
+    ),
+  skillAudit: (skillId: string, filters: Record<string, string> = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) params.set(key, value);
+    return req<SkillAuditEntry[]>(`/api/skills/${skillId}/audit?` + params.toString());
+  },
+  createSkill: (body: SkillDraftPayload) =>
+    req<SkillDetail>('/api/skills', { method: 'POST', body: JSON.stringify(body) }),
+  createSkillVersion: (skillId: string, body: SkillDraftPayload = {}) =>
+    req<SkillVersion>(`/api/skills/${skillId}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  // `updatedAt` is the optimistic lock: the server refuses the write if the
+  // draft moved since it was loaded, so two people editing one draft lose
+  // nothing silently.
+  saveSkillVersion: (skillId: string, versionId: string, body: SkillDraftPayload) =>
+    req<{ skill: Skill; version: SkillVersion }>(`/api/skills/${skillId}/versions/${versionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  submitSkillVersion: (skillId: string, versionId: string) =>
+    req<SkillVersion>(`/api/skills/${skillId}/versions/${versionId}/submit`, { method: 'POST' }),
+  requestSkillChanges: (skillId: string, versionId: string, note: string) =>
+    req<SkillVersion>(`/api/skills/${skillId}/versions/${versionId}/request-changes`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
+  approveSkillVersion: (skillId: string, versionId: string) =>
+    req<{ skill: Skill; version: SkillVersion }>(
+      `/api/skills/${skillId}/versions/${versionId}/approve`,
+      { method: 'POST' },
+    ),
+  deprecateSkillVersion: (skillId: string, versionId: string, note: string) =>
+    req<{ skill: Skill; version: SkillVersion }>(
+      `/api/skills/${skillId}/versions/${versionId}/deprecate`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+    ),
+  resolveSkills: (body: SkillResolveInput) =>
+    req<SkillResolveResult>('/api/skills/resolve-test', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  skillPackageInfo: (skillId: string, version: number) =>
+    req<SkillPackageInfo>(`/api/skills/${skillId}/versions/${version}/package-info`),
+  downloadSkillPackage: (skillId: string, version: number) =>
+    api.download(`/api/skills/${skillId}/versions/${version}/package`),
+  // Import a legacy Skills Library page as a DRAFT. It still has to pass review
+  // before any agent sees it — adoption saves retyping, it is not a shortcut
+  // around the review that makes a skill trusted.
+  adoptSkillPage: (body: { pageId: string; name?: string; slug?: string; deliveryMode?: string }) =>
+    req<{ skill: Skill; version: SkillVersion; note: string }>('/api/skills/adopt-page', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
   // The file index: a whole workspace, or everything below one page.
   listFiles: (scope: { workspace?: string; under?: string }) =>
     req<DworkspaceFile[]>(
