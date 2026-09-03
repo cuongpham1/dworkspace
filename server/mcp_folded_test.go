@@ -125,10 +125,13 @@ func TestCreateFromTemplateFoldedIntoCreatePage(t *testing.T) {
 	if !strings.Contains(out, "Week 32") && !strings.Contains(strings.ToLower(out), "created") {
 		t.Errorf("unexpected answer: %s", out)
 	}
+	if !strings.Contains(out, `"kind":"create"`) || !strings.Contains(out, "Week 32") {
+		t.Errorf("template create did not return a create proposal: %s", out)
+	}
 	var n int
 	s.db.QueryRow(`SELECT COUNT(*) FROM pages WHERE title = 'Week 32'`).Scan(&n)
-	if n != 1 {
-		t.Errorf("the page was not created from the template (%d found)", n)
+	if n != 0 {
+		t.Errorf("template create created a canonical page before human publish (%d found)", n)
 	}
 }
 

@@ -5,6 +5,7 @@ import { WifiOff } from 'lucide-react';
 import type { Me, PageMeta, User, Workspace } from './types';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
+import ProposalReviewModal from './components/ProposalReviewModal';
 import TabBar from './components/TabBar';
 import SearchModal from './components/SearchModal';
 import IndexView from './components/IndexView';
@@ -80,6 +81,11 @@ function proposalIdFromLocation(): string | null {
   if (!pageIdFromLocation()) return null;
   const id = new URLSearchParams(window.location.search).get('proposals');
   return id && /^[0-9a-f]+$/.test(id) ? id : null;
+}
+
+function reviewProposalIdFromLocation(): string | null {
+  const m = window.location.pathname.match(/^\/review\/proposals\/([0-9a-f]+)$/);
+  return m ? m[1] : null;
 }
 
 type Theme = 'light' | 'dark';
@@ -651,6 +657,7 @@ export default function App() {
     // this effect had already moved the browser to the last page you had open —
     // the agent's sign-in vanished into the app before anyone could answer it.
     if (window.location.pathname === '/oauth/consent') return;
+    if (reviewProposalIdFromLocation()) return;
     if (currentId) {
       const cur = pages.find((p) => p.id === currentId);
       if (!cur || !cur.trashed) return; // in-tree-and-live, OR a row not in the tree → keep
@@ -812,6 +819,7 @@ export default function App() {
     const role = workspaces.find((w) => w.id === page.workspaceId)?.role;
     return role !== 'viewer';
   }, [currentId, pagesById, workspaces]);
+  const reviewProposalId = reviewProposalIdFromLocation();
 
   const onAuthed = useCallback(
     (user: User) => {
@@ -973,7 +981,19 @@ export default function App() {
         />
       )}
       <main className="main">
-        {indexOpen ? (
+        {reviewProposalId ? (
+          <ProposalReviewModal
+            initialProposalId={reviewProposalId}
+            canonicalContent={[]}
+            canonicalTitle=""
+            canEdit={me.user !== null}
+            onClose={() => {
+              window.history.replaceState({}, '', '/');
+              setCurrentId(null);
+            }}
+            onPublished={() => void loadPages()}
+          />
+        ) : indexOpen ? (
           <IndexView
             pages={pages}
             favorites={favorites}

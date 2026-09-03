@@ -14,7 +14,7 @@
 </style>
 </head>
 <body>
-<main id="app" aria-live="polite"><p class="eyebrow">VUS · Proposed revision</p><p id="loading" class="note">Waiting for proposal data…</p></main>
+<main id="app" aria-live="polite"><p class="eyebrow">VUS · Human review</p><p id="loading" class="note">Waiting for proposal data…</p></main>
 <script>
 (() => {
   "use strict";
@@ -100,12 +100,13 @@
     const status = text(proposal.status) || "pending";
     app.innerHTML = "";
     const header = document.createElement("header");
-    header.innerHTML = "<div><p class=\"eyebrow\">VUS · Proposed revision</p><h1></h1><p class=\"summary\"></p></div><span class=\"status\"></span>";
+    const isCreate = text(proposal.kind) === "create";
+    header.innerHTML = "<div><p class=\"eyebrow\">VUS · " + (isCreate ? "New document" : "Proposed revision") + "</p><h1></h1><p class=\"summary\"></p></div><span class=\"status\"></span>";
     header.querySelector("h1").textContent = text(proposal.proposedTitle) || text(canonical.title) || "Untitled document";
     header.querySelector(".summary").textContent = text(proposal.summary) || "No summary provided.";
     const badge = header.querySelector(".status"); badge.textContent = status; badge.className = "status " + status; app.appendChild(header);
-    const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = "<span>Creator <strong></strong></span><span>Created <strong></strong></span><span>Page <strong></strong></span>";
-    const values = [text(proposal.creatorName) + (text(proposal.creatorType) ? " · " + text(proposal.creatorType) : ""), text(proposal.createdAt) || "Unknown", text(proposal.pageId)];
+    const meta = document.createElement("div"); meta.className = "meta"; meta.innerHTML = "<span>Creator <strong></strong></span><span>Created <strong></strong></span><span>Destination <strong></strong></span><span>State <strong></strong></span>";
+    const values = [text(proposal.creatorName) + (text(proposal.creatorType) ? " · " + text(proposal.creatorType) : ""), text(proposal.createdAt) || "Unknown", isCreate ? "Will be created on Publish" : text(proposal.pageId), isCreate ? "No canonical page yet" : "Canonical page unchanged"];
     meta.querySelectorAll("strong").forEach((node, index) => { node.textContent = values[index]; }); app.appendChild(meta);
     const warning = document.createElement("div"); warning.className = "warning" + (stale ? " visible" : ""); warning.setAttribute("role", "alert"); warning.textContent = "This proposal is stale: the canonical document changed after it was created. VUS will refuse to overwrite the newer version."; app.appendChild(warning);
     const grid = document.createElement("section"); grid.className = "grid";
@@ -113,6 +114,14 @@
     const diff = document.createElement("article"); diff.className = "panel"; diff.innerHTML = "<div class=\"panel-head\"><h2>Changes only</h2><span class=\"eyebrow\">block-aware</span></div><div class=\"panel-body\"></div>"; showDiff(diff.querySelector(".panel-body"), current, proposed);
     grid.append(preview, diff); app.appendChild(grid);
     const context = document.createElement("details"); context.className = "panel"; context.style.marginTop = "14px"; context.innerHTML = "<summary class=\"panel-head\">Canonical context</summary><div class=\"panel-body\"></div>"; showBlocks(context.querySelector(".panel-body"), current, ""); app.appendChild(context);
+    const review = proposal.factReview && typeof proposal.factReview === "object" ? proposal.factReview : {};
+    const knowledge = document.createElement("section"); knowledge.className = "panel"; knowledge.style.marginTop = "14px";
+    const validation = text(review.validation) || "unknown"; const provided = Number(review.provided) || 0; const required = Number(review.required) || 0;
+    knowledge.innerHTML = "<div class=\"panel-head\"><h2>Knowledge review</h2><span class=\"status\">" + (validation === "unknown" ? "UNKNOWN" : validation) + "</span></div><div class=\"panel-body\"></div>";
+    const knowledgeBody = knowledge.querySelector(".panel-body"); const factSummary = document.createElement("p"); factSummary.className = "summary"; factSummary.textContent = validation === "unknown" ? "UNKNOWN — completeness is not validated" : (required ? provided + "/" + required + " required facts provided" : "No machine-readable completeness constraint"); knowledgeBody.appendChild(factSummary);
+    const gaps = Array.isArray(review.gaps) ? review.gaps : []; gaps.forEach(gap => { const item = document.createElement("p"); item.className = "note"; item.textContent = "Missing: " + text(gap.label || gap.message); knowledgeBody.appendChild(item); });
+    const candidates = Array.isArray(proposal.relatedCandidates) ? proposal.relatedCandidates : []; if (candidates.length) { const heading = document.createElement("h2"); heading.textContent = "Related document candidates"; heading.style.marginTop = "12px"; knowledgeBody.appendChild(heading); candidates.filter(candidate => !candidate.dismissed).forEach(candidate => { const item = document.createElement("p"); item.className = "note"; item.textContent = "#" + (Number(candidate.rank) || "?") + " " + text(candidate.title) + " — " + text(candidate.rationale) + (text(candidate.snippet) ? " · " + text(candidate.snippet) : ""); knowledgeBody.appendChild(item); }); }
+    app.appendChild(knowledge);
     const actions = document.createElement("div"); actions.className = "actions"; actions.innerHTML = "<button type=\"button\" class=\"secondary\" id=\"open-vus\">Open VUS review</button><button type=\"button\" class=\"secondary\" id=\"refresh\">Refresh current state</button><span class=\"note\">Publishing and rejecting require an authenticated human VUS session.</span>"; actions.querySelector("#open-vus").addEventListener("click", handoff); actions.querySelector("#refresh").addEventListener("click", refresh); app.appendChild(actions);
   };
   window.addEventListener("message", event => {

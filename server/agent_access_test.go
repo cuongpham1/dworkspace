@@ -103,3 +103,23 @@ func TestAStrictWorkspaceDisappearsFromAnAPITokensView(t *testing.T) {
 		t.Error("a signed-in connection cannot see the workspace that was made strict for it")
 	}
 }
+
+func TestMCPDirectPageIDRespectsWorkspaceAgentAccess(t *testing.T) {
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "strict-direct-id@example.test")
+	ws := s.firstWorkspaceOf(t, uid)
+	page := s.makePage(t, ws, uid, "", "Confidential", `{}`)
+	if _, err := s.db.Exec(`UPDATE workspaces SET agent_access = ? WHERE id = ?`, agentAccessStrict, ws); err != nil {
+		t.Fatalf("set strict workspace: %v", err)
+	}
+
+	apiToken := &user{ID: uid, Name: "Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	if _, err := callTool(t, s, apiToken, "get_page", `{"page_id":"`+page+`"}`); err == nil {
+		t.Fatal("an unrestricted API token reached a page in a strict workspace by guessed ID")
+	}
+
+	session := &user{ID: uid, Name: "Human"}
+	if _, err := callTool(t, s, session, "get_page", `{"page_id":"`+page+`"}`); err != nil {
+		t.Fatalf("browser session was denied a page in its own strict workspace: %v", err)
+	}
+}

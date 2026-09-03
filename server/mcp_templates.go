@@ -84,21 +84,31 @@ func (s *Server) mcpCreateFromTemplate(u *user, templateID, title string) (strin
 	if isTemplate == 0 {
 		return "", fmt.Errorf("page %q is not a template — call list with kind=\"templates\", or duplicate_page for an ordinary copy", templateID)
 	}
-	nid, err := s.duplicatePage(templateID, u.ID, true, false)
+	p, err := s.getPage(templateID)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("template %q not found", templateID)
 	}
 	if err != nil {
 		return "", err
 	}
-	if title != "" {
-		if _, err := s.db.Exec(`UPDATE pages SET title = ?, updated_at = ? WHERE id = ?`, title, now(), nid); err != nil {
-			return "", err
-		}
-		s.reindexPage(nid)
-		s.pagesChanged()
+	if title == "" {
+		title = p.Title
 	}
-	return fmt.Sprintf("Created page %s from template %s", nid, templateID), nil
+	proposal, err := s.createPageProposal(u, proposalInput{
+		WorkspaceID: p.WorkspaceID, Title: title, Content: string(p.Content), Type: p.Type,
+		Icon: p.Icon, Cover: p.Cover, Description: p.Description, Tags: p.Tags, Props: string(p.Props),
+		Summary: fmt.Sprintf("Agent proposed creating a document from template %s.", templateID),
+	})
+	if err != nil {
+		return "", err
+	}
+	s.audit("agent", u.ID, u.Name+" (MCP)", "proposal_created", "", p.WorkspaceID, proposal.ID+": "+proposal.Summary)
+	payload, err := s.mcpProposalPayload(proposal, "CREATED PROPOSAL awaiting human review. No canonical page exists until Publish.")
+	if err != nil {
+		return "", err
+	}
+	b, err := json.Marshal(payload)
+	return string(b), err
 }
 
 // mcpSaveAsTemplate snapshots a page into a template, leaving the page itself

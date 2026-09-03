@@ -47,7 +47,7 @@ endpoints refuse an API token, an administrator's own included, with
 
 | Event | The checkbox says | Fires when |
 | --- | --- | --- |
-| `page.created` | a page is created | a page, row or collection is created in the browser, or an agent calls `create_page` |
+| `page.created` | a page is created | a page, row or collection is created in the browser, or a human publishes an agent `create_page` proposal |
 | `page.updated` | a page is changed | any save of the page — title, content, icon, cover, tags, description, visibility, template flag or properties — and also a move to another parent or a reorder in the sidebar |
 | `page.trashed` | a page is thrown away | a page goes to the trash, **or is deleted permanently** — both send this same event — once **per page in the subtree**, so a receiver watching one page hears about it even when a parent was thrown away |
 

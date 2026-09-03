@@ -222,7 +222,7 @@ Over MCP a template is reached with three of the tools listed in
 | Call | What it does |
 | --- | --- |
 | `list` with `kind: "templates"` | every template you may read: id, title, icon, kind (`doc` or `collection`), description and workspace |
-| `create_page` with `template_id` | makes a page from that template; only `title` applies alongside it, and it renames the copy |
+| `create_page` with `template_id` | makes a pending create proposal from that template; only `title` applies alongside it, and a human must publish the renamed copy |
 | `save_as_template` with `page_id` | snapshots the page — the answer says *the page itself is unchanged* |
 
 `duplicate_page` is the plain copy, with no template flag involved.

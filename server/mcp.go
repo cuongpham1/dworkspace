@@ -118,24 +118,32 @@ var mcpTools = []map[string]any{
 			"required": []string{"page_id"}},
 	},
 	{
-		"name": "create_page",
-		"description": "Create a new page, optionally under a parent and with initial Markdown content. " +
-			"Cover, tags and description can be set right here — a page created without them is a page " +
-			"nobody goes back to finish.",
+		"name":        "create_page",
+		"description": "Create a new canonical document proposal, optionally under a parent and with initial Markdown content. No page is created, indexed, or visible in the Documents tree until a human publishes the proposal in the review workspace. Cover, tags, description, deterministic fact constraints, and conservative related-document candidates can be included for human review.",
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
-				"title":        map[string]any{"type": "string"},
-				"template_id":  map[string]any{"type": "string", "description": "Build the page from a template instead of from scratch — call list with kind=\"templates\" for the ids. Only title applies alongside it."},
-				"parent_id":    map[string]any{"type": "string", "description": "Optional parent page id. Pass a database id to create a ROW in that database."},
-				"workspace_id": map[string]any{"type": "string", "description": "Which workspace to create in when there is no parent_id. Call list with kind=\"workspaces\" first — without this the page lands in your first workspace, which may not be the one you mean."},
-				"markdown":     map[string]any{"type": "string", "description": "Optional initial content as Markdown. " + pageLinkHint + " " + diagramHint},
-				"icon":         map[string]any{"type": "string", "description": "Optional emoji, \"lucide:Name\", \"mdi:Name\" or image URL"},
-				"properties":   map[string]any{"type": "object", "description": "Typed property values when creating a database row — same shape as set_properties. Call get_collection first for property ids."},
-				"cover":        map[string]any{"type": "string", "description": coverHint},
-				"description":  map[string]any{"type": "string", "description": "Optional one-line summary, shown under the title."},
-				"tags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags. Call list with kind=\"tags\" first and reuse what exists instead of inventing near-duplicates."},
+				"title":              map[string]any{"type": "string"},
+				"template_id":        map[string]any{"type": "string", "description": "Build the page from a template instead of from scratch — call list with kind=\"templates\" for the ids. Only title applies alongside it."},
+				"parent_id":          map[string]any{"type": "string", "description": "Optional parent page id. Pass a database id to create a ROW in that database."},
+				"workspace_id":       map[string]any{"type": "string", "description": "Which workspace to create in when there is no parent_id. Call list with kind=\"workspaces\" first — without this the page lands in your first workspace, which may not be the one you mean."},
+				"markdown":           map[string]any{"type": "string", "description": "Optional initial content as Markdown. " + pageLinkHint + " " + diagramHint},
+				"icon":               map[string]any{"type": "string", "description": "Optional emoji, \"lucide:Name\", \"mdi:Name\" or image URL"},
+				"properties":         map[string]any{"type": "object", "description": "Typed property values when creating a database row — same shape as set_properties. Call get_collection first for property ids."},
+				"cover":              map[string]any{"type": "string", "description": coverHint},
+				"description":        map[string]any{"type": "string", "description": "Optional one-line summary, shown under the title."},
+				"tags":               map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags. Call list with kind=\"tags\" first and reuse what exists instead of inventing near-duplicates."},
+				"fact_review":        map[string]any{"type": "object", "description": "Optional machine-readable fact review with facts and constraints. Only explicit constraints are validated; otherwise validation is UNKNOWN."},
+				"related_candidates": map[string]any{"type": "array", "items": map[string]any{"type": "object"}, "description": "Optional related document candidates. Candidates are suggestions, never facts or automatic links."},
 			},
 			"required": []string{"title"}},
+		"outputSchema": map[string]any{
+			"type": "object", "properties": map[string]any{
+				"proposal": map[string]any{"type": "object"}, "kind": map[string]any{"type": "string"},
+				"status": map[string]any{"type": "string"}, "reviewUrl": map[string]any{"type": "string"},
+				"factReview": map[string]any{"type": "object"}, "relatedCandidates": map[string]any{"type": "array"},
+			},
+		},
+		"_meta": map[string]any{"ui": map[string]any{"resourceUri": mcpAppResourceURI, "visibility": []string{"model", "app"}}},
 	},
 	{
 		"name": "update_page",
@@ -302,33 +310,36 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "proposals",
-		"description": "Proposed document revisions. action: list (the default) | get | create. Creating a proposal never changes the canonical page; it reports that the revision is awaiting human review. Publish and reject are browser-only approval actions.",
+		"description": "Proposed canonical document edit review. action: list (the default) | get | create. An edit proposal keeps its original base hash and can be edited in the human review workspace before browser-only Publish or reject. Use create_page for gated canonical document creation, fact-review claims, and related-document candidates.",
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
-				"page_id":        map[string]any{"type": "string"},
+				"page_id":        map[string]any{"type": "string", "description": "Edit proposal target page. Omit for all accessible proposals."},
 				"action":         map[string]any{"type": "string", "description": "list (default) | get | create"},
 				"proposal_id":    map[string]any{"type": "string", "description": "Required for get."},
 				"markdown":       map[string]any{"type": "string", "description": "Required for create; replaces the document body in the proposed state."},
 				"proposed_title": map[string]any{"type": "string"},
 				"summary":        map[string]any{"type": "string"},
 			},
-			"required": []string{"page_id"}},
+			"required": []string{}},
 		"outputSchema": map[string]any{
 			"type":        "object",
 			"description": "Structured proposal metadata and content; text content remains available for clients without structured output support.",
 			"properties": map[string]any{
-				"id":              map[string]any{"type": "string"},
-				"pageId":          map[string]any{"type": "string"},
-				"status":          map[string]any{"type": "string", "enum": []string{"pending", "published", "rejected", "superseded"}},
-				"message":         map[string]any{"type": "string"},
-				"baseHash":        map[string]any{"type": "string"},
-				"proposedContent": map[string]any{"description": "The original JSON document content, retained at the top level for compatibility."},
-				"proposedTitle":   map[string]any{"type": "string"},
-				"contentNote":     map[string]any{"type": "string"},
-				"proposals":       map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
-				"proposal":        map[string]any{"type": "object"},
-				"canonical":       map[string]any{"type": "object"},
-				"reviewUrl":       map[string]any{"type": "string"},
+				"id":                map[string]any{"type": "string"},
+				"pageId":            map[string]any{"type": "string"},
+				"kind":              map[string]any{"type": "string", "enum": []string{"create", "edit"}},
+				"status":            map[string]any{"type": "string", "enum": []string{"pending", "published", "rejected", "superseded"}},
+				"message":           map[string]any{"type": "string"},
+				"baseHash":          map[string]any{"type": "string"},
+				"proposedContent":   map[string]any{"description": "The original JSON document content, retained at the top level for compatibility."},
+				"proposedTitle":     map[string]any{"type": "string"},
+				"contentNote":       map[string]any{"type": "string"},
+				"proposals":         map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+				"proposal":          map[string]any{"type": "object"},
+				"canonical":         map[string]any{"type": "object"},
+				"reviewUrl":         map[string]any{"type": "string"},
+				"factReview":        map[string]any{"type": "object"},
+				"relatedCandidates": map[string]any{"type": "array"},
 			},
 		},
 		"_meta": map[string]any{"ui": map[string]any{
@@ -676,7 +687,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			rpcResult(w, req.ID, textResult(err.Error(), true))
 			return
 		}
-		if params.Name == "proposals" {
+		if params.Name == "proposals" || params.Name == "create_page" {
 			var value any
 			if json.Unmarshal([]byte(result), &value) == nil {
 				if structured, ok := value.(map[string]any); ok {
@@ -776,13 +787,16 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		// workspace(from_workspace:) — copy a workspace's structure.
 		FromWorkspace string `json:"from_workspace"`
 		// working_on — the agent presence check-in.
-		Agent         string `json:"agent"`
-		Label         string `json:"label"`
-		Note          string `json:"note"`
-		Text          string `json:"text"` // note() — the trail entry itself
-		ProposalID    string `json:"proposal_id"`
-		ProposedTitle string `json:"proposed_title"`
-		Summary       string `json:"summary"`
+		Agent              string          `json:"agent"`
+		Label              string          `json:"label"`
+		Note               string          `json:"note"`
+		Text               string          `json:"text"` // note() — the trail entry itself
+		ProposalID         string          `json:"proposal_id"`
+		ProposedTitle      string          `json:"proposed_title"`
+		Summary            string          `json:"summary"`
+		FactReview         json.RawMessage `json:"fact_review"`
+		RelatedCandidates  json.RawMessage `json:"related_candidates"`
+		SelectedRelatedIDs []string        `json:"selected_related_ids"`
 
 		ExpectedMinutes int  `json:"expected_minutes"`
 		Done            bool `json:"done"`
@@ -897,17 +911,15 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		parentID = *args.ParentID
 	}
 
-	// A workspace-scoped API token narrows access further: even pages the user
-	// could otherwise reach are invisible if they live outside the token's scope.
-	// This covers every tool that names a page or a parent, including a move's
-	// destination (checked against the parent workspace).
-	if u.TokenWorkspaces != nil {
-		if args.PageID != "" && !s.credentialMayEnter(u, s.pageWorkspace(args.PageID)) {
-			return "", fmt.Errorf("page %q not found", args.PageID)
-		}
-		if parentID != "" && !s.credentialMayEnter(u, s.pageWorkspace(parentID)) {
-			return "", fmt.Errorf("parent page %q not found", parentID)
-		}
+	// The credential and workspace policies both apply to every tool that names a
+	// page or a parent, including a move's destination (checked against the
+	// parent workspace). This must also run for unrestricted tokens: strict and
+	// closed workspaces can reject an agent based on the workspace policy alone.
+	if args.PageID != "" && !s.credentialMayEnter(u, s.pageWorkspace(args.PageID)) {
+		return "", fmt.Errorf("page %q not found", args.PageID)
+	}
+	if parentID != "" && !s.credentialMayEnter(u, s.pageWorkspace(parentID)) {
+		return "", fmt.Errorf("parent page %q not found", parentID)
 	}
 
 	run := func() (string, error) {
@@ -988,39 +1000,45 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 					return "", err
 				}
 			}
-			id := newID()
-			ts := now()
-			var pos float64
-			if err := s.db.QueryRow(`SELECT COALESCE(MAX(position), 0) + 1 FROM pages WHERE parent_id IS ?`, parent).Scan(&pos); err != nil {
-				return "", err
-			}
-			if _, err := s.db.Exec(`INSERT INTO pages (id, parent_id, title, icon, content, position, created_at, updated_at, workspace_id, owner_id, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'workspace')`,
-				id, parent, args.Title, args.Icon, content, pos, ts, ts, workspaceID, userID); err != nil {
-				return "", err
-			}
-			// Cover, description and tags in the same call, for the same reason
-			// the properties are: a second call is one nobody makes. Routed
-			// through mcpUpdatePageMeta so the cover is validated and the tags
-			// normalised exactly as they are everywhere else.
-			if args.Cover != "" || args.Description != "" || args.Tags != nil {
-				if _, err := s.mcpUpdatePageMeta(id, "", "", args.Cover, args.Description, "", args.Tags); err != nil {
-					return "", fmt.Errorf("page created (%s) but its metadata failed: %w", id, err)
+			factReview := factReview{}
+			if len(args.FactReview) > 0 && string(args.FactReview) != "null" {
+				if err := json.Unmarshal(args.FactReview, &factReview); err != nil {
+					return "", fmt.Errorf("fact_review must be a JSON object: %w", err)
 				}
 			}
-			// Set the properties in the same call: otherwise a database row is
-			// only complete after a second call, and between the two a half-finished
-			// row sits in the database.
+			var related []relatedCandidate
+			if len(args.RelatedCandidates) > 0 && string(args.RelatedCandidates) != "null" {
+				if err := json.Unmarshal(args.RelatedCandidates, &related); err != nil {
+					return "", fmt.Errorf("related_candidates must be a JSON array: %w", err)
+				}
+			}
+			tags := []string{}
+			if args.Tags != nil {
+				tags = *args.Tags
+			}
+			input := proposalInput{ParentID: parent, WorkspaceID: workspaceID, Title: args.Title, Content: content,
+				Type: "doc", Icon: args.Icon, Cover: args.Cover, Description: args.Description, Props: "{}",
+				Tags: tags, Summary: "Agent proposed a new canonical document.", FactReview: factReview, RelatedCandidates: related}
 			if len(args.Properties) > 0 {
-				if _, err := s.mcpSetProperties(id, args.Properties, nil); err != nil {
-					return "", fmt.Errorf("page created (%s) but properties failed: %w", id, err)
+				if !json.Valid(args.Properties) {
+					return "", fmt.Errorf("properties must be valid JSON")
 				}
+				input.Props = string(args.Properties)
 			}
-			if err := s.reindexPage(id); err != nil {
+			if args.Summary != "" {
+				input.Summary = args.Summary
+			}
+			p, err := s.createPageProposal(u, input)
+			if err != nil {
 				return "", err
 			}
-			s.pagesChanged()
-			s.fireWebhook("page.created", id)
-			return fmt.Sprintf("Created page %q with id %s (path: /p/%s)", args.Title, id, id), nil
+			s.audit("agent", u.ID, u.Name+" (MCP)", "proposal_created", "", workspaceID, p.ID+": "+p.Summary)
+			payload, err := s.mcpProposalPayload(p, "CREATED PROPOSAL awaiting human review. No canonical page exists until Publish.")
+			if err != nil {
+				return "", err
+			}
+			b, err := json.Marshal(payload)
+			return string(b), err
 		case "update_page":
 			// Moving and favouriting are metadata changes and used to be tools of
 			// their own. Order matters: move first, so a failed move does not leave
@@ -1280,7 +1298,7 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		// property — the generic one here has no way to know what changed, and
 		// two entries for one call would make the log lie about how much
 		// happened.
-		if name != "working_on" && name != "note" && name != "set_properties" && name != "proposals" && !(name == "write_content" && args.Mode == "replace") {
+		if name != "working_on" && name != "note" && name != "set_properties" && name != "proposals" && name != "create_page" && !(name == "write_content" && args.Mode == "replace") {
 			ws := s.pageWorkspace(args.PageID)
 			if ws == "" { // create_page has no page_id arg — attribute to the actor's workspace
 				ws = s.userDefaultWorkspace(userID)
