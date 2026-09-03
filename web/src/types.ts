@@ -79,6 +79,15 @@ export interface SearchResult {
   title: string;
   icon: string;
   snippet: string;
+  kind?: 'body' | 'description';
+  heading?: string;
+  source?: 'lexical' | 'semantic' | 'hybrid';
+  provenance?: ReadonlyArray<{
+    source: 'lexical' | 'semantic' | 'hybrid';
+    kind: 'body' | 'description';
+    heading?: string;
+    snippet: string;
+  }>;
 }
 
 export interface Backlink {

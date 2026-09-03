@@ -24,20 +24,23 @@ type Server struct {
 	// name → the markup INSIDE a Lucide <svg>, for the print view.
 	lucide map[string]string
 	// The third-party licence notices, embedded from the repository root.
-	notices     string
-	addr        string
-	tunnel      tunnelState
-	loginMu     sync.Mutex
-	loginSem    chan struct{}
-	events      *eventHub
-	collab      *collabHub
-	mcpRate     *rateLimiter
-	mcpIcon     string          // data URI of the logo for serverInfo.icons (see mcp.go)
-	ingest      *ingestRegistry // bulk imports in flight (see ingest.go)
-	loginRate   *rateLimiter
-	tokenRate   *rateLimiter
-	formRate    *rateLimiter
-	stopCleanup chan struct{}
+	notices          string
+	addr             string
+	tunnel           tunnelState
+	loginMu          sync.Mutex
+	loginSem         chan struct{}
+	events           *eventHub
+	collab           *collabHub
+	mcpRate          *rateLimiter
+	mcpIcon          string          // data URI of the logo for serverInfo.icons (see mcp.go)
+	ingest           *ingestRegistry // bulk imports in flight (see ingest.go)
+	loginRate        *rateLimiter
+	tokenRate        *rateLimiter
+	formRate         *rateLimiter
+	stopCleanup      chan struct{}
+	semanticCache    ChunkEmbeddingCache
+	semanticEmbedder Embedder
+	semanticConfig   SemanticSearchConfig
 	// webhookTransport overrides how webhook deliveries reach the network. Nil
 	// in every real build; set only by tests, whose receiver lives on an address
 	// safeDial refuses by design (see webhooks.go).
@@ -111,6 +114,14 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 		formRate:    newRateLimiter(20, 8), // 20 public form submits/min per IP, burst 8
 		stopCleanup: make(chan struct{}),
 	}
+	semanticEmbedder, err := newLocalHashEmbedder()
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	s.semanticCache = newChunkEmbeddingCache(db)
+	s.semanticEmbedder = semanticEmbedder
+	s.semanticConfig = DefaultSemanticSearchConfig()
 	if err := s.seed(); err != nil {
 		return nil, err
 	}
@@ -126,6 +137,12 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	// searchindex.go). Rebuilds once if it has to.
 	if err := s.migrateSearchIndex(); err != nil {
 		return nil, err
+	}
+	if err := s.semanticCache.DropOtherModels(s.semanticEmbedder.Signature()); err != nil {
+		log.Printf("semantic cache model cleanup: %v", err)
+	}
+	if err := s.semanticCache.CleanupStale(); err != nil {
+		log.Printf("semantic cache stale-row cleanup: %v", err)
 	}
 	// The file index, built once from the pages' blocks and the files
 	// directory (files.go).

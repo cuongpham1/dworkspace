@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"strings"
 )
 
@@ -25,6 +27,9 @@ import (
 // paragraph without loading the page.
 
 const (
+	chunkKindBody        = "body"
+	chunkKindDescription = "description"
+
 	// Target size of a passage. Big enough for one thought, small enough that a
 	// hit still says something.
 	chunkTarget = 700
@@ -35,6 +40,7 @@ const (
 
 type pageChunk struct {
 	Ord     int
+	Kind    string
 	Heading string // heading path, e.g. "Verträge › Kündigung" (i18n-ok: example)
 	Text    string
 }
@@ -56,7 +62,7 @@ func chunkContent(raw []byte) []pageChunk {
 		if t == "" {
 			return
 		}
-		out = append(out, pageChunk{Ord: len(out), Heading: bufHeading, Text: t})
+		out = append(out, pageChunk{Ord: len(out), Kind: chunkKindBody, Heading: bufHeading, Text: t})
 	}
 
 	var walk func(bs []mdBlock)
@@ -151,44 +157,139 @@ func blockPlainText(blk mdBlock) string {
 	return strings.TrimSpace(b.String())
 }
 
+type pageChunkIndex struct {
+	pageID, workspaceID, title, description string
+	content                                 []byte
+	trashed                                 bool
+}
+
 // reindexChunks rewrites the passages of a page.
 //
 // Runs in the same breath as reindexPage. The delete path needs nothing of its
 // own: page_chunks hangs off pages by foreign key, and chunks_fts is carried
 // along here (a virtual table knows no cascade).
-func (s *Server) reindexChunks(pageID, workspaceID, title string, content []byte, trashed bool) error {
-	if _, err := s.db.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
-		(SELECT id FROM page_chunks WHERE page_id = ?)`, pageID); err != nil {
-		return err
-	}
-	if _, err := s.db.Exec(`DELETE FROM page_chunks WHERE page_id = ?`, pageID); err != nil {
-		return err
-	}
-	if trashed {
+func (s *Server) reindexChunks(index pageChunkIndex) error {
+	if index.trashed {
 		return nil
 	}
-	chunks := chunkContent(content)
-	if len(chunks) == 0 {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	chunks := chunkContent(index.content)
+	descriptionText := strings.TrimSpace(index.description)
+	if descriptionText != "" {
+		titleText := strings.TrimSpace(index.title)
+		if titleText != "" {
+			descriptionText = titleText + "\n" + descriptionText
+		}
+		chunks = append([]pageChunk{{Ord: 0, Kind: chunkKindDescription, Text: descriptionText}}, chunks...)
+	}
+	if len(chunks) == 0 && strings.TrimSpace(index.title) != "" {
 		// An empty page still gets one passage from its title, otherwise it
 		// disappears from the passage-based search.
-		if strings.TrimSpace(title) == "" {
-			return nil
-		}
-		chunks = []pageChunk{{Ord: 0, Text: title}}
+		chunks = []pageChunk{{Ord: 0, Kind: chunkKindBody, Text: index.title}}
 	}
-	for _, c := range chunks {
-		id := newID()
-		if _, err := s.db.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, heading, text)
-			VALUES (?, ?, ?, ?, ?, ?)`, id, pageID, workspaceID, c.Ord, c.Heading, c.Text); err != nil {
+	rows, err := tx.Query(`SELECT id, kind, text FROM page_chunks WHERE page_id = ? ORDER BY ord`, index.pageID)
+	if err != nil {
+		return err
+	}
+	type oldChunk struct{ id, kind, text string }
+	var old []oldChunk
+	for rows.Next() {
+		var c oldChunk
+		if err := rows.Scan(&c.id, &c.kind, &c.text); err != nil {
+			rows.Close()
 			return err
+		}
+		old = append(old, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	if _, err := tx.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
+		(SELECT id FROM page_chunks WHERE page_id = ?)`, index.pageID); err != nil {
+		return err
+	}
+	reusable := map[string][]string{}
+	for _, c := range old {
+		key := c.kind + "\x00" + c.text
+		reusable[key] = append(reusable[key], c.id)
+	}
+	used := map[string]bool{}
+	for _, c := range chunks {
+		key := c.Kind + "\x00" + c.Text
+		id := ""
+		if ids := reusable[key]; len(ids) > 0 {
+			id = ids[0]
+			reusable[key] = ids[1:]
+			used[id] = true
+			if _, err := tx.Exec(`UPDATE page_chunks SET workspace_id = ?, ord = ?, heading = ? WHERE id = ?`,
+				index.workspaceID, c.Ord, c.Heading, id); err != nil {
+				return err
+			}
+		} else {
+			id = newID()
+			if _, err := tx.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, kind, heading, text)
+				VALUES (?, ?, ?, ?, ?, ?, ?)`, id, index.pageID, index.workspaceID, c.Ord, c.Kind, c.Heading, c.Text); err != nil {
+				return err
+			}
 		}
 		// The title goes into every passage: otherwise a two-word German query
 		// finds nothing when one word is in the title and the other in the
 		// paragraph — i18n-ok: "Vertrag Kündigung" is the example that showed it.
-		if _, err := s.db.Exec(`INSERT INTO chunks_fts (chunk_id, title, heading, text) VALUES (?, ?, ?, ?)`,
-			id, title, c.Heading, c.Text); err != nil {
+		if _, err := tx.Exec(`INSERT INTO chunks_fts (chunk_id, title, heading, text) VALUES (?, ?, ?, ?)`,
+			id, index.title, c.Heading, c.Text); err != nil {
 			return err
 		}
 	}
+	for _, c := range old {
+		if used[c.id] {
+			continue
+		}
+		if _, err := tx.Exec(`DELETE FROM page_chunks WHERE id = ?`, c.id); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if err := s.refreshChunkEmbeddings(index.pageID); err != nil {
+		log.Printf("semantic embeddings for page %s: %v", index.pageID, err)
+	}
 	return nil
+}
+
+func (s *Server) refreshChunkEmbeddings(pageID string) error {
+	if s.semanticCache == nil || s.semanticEmbedder == nil {
+		return nil
+	}
+	rows, err := s.db.Query(`SELECT id, text FROM page_chunks WHERE page_id = ? ORDER BY ord`, pageID)
+	if err != nil {
+		return err
+	}
+	type chunkText struct{ id, text string }
+	var chunks []chunkText
+	for rows.Next() {
+		var c chunkText
+		if err := rows.Scan(&c.id, &c.text); err != nil {
+			rows.Close()
+			return err
+		}
+		chunks = append(chunks, c)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, c := range chunks {
+		if _, _, err := s.semanticCache.GetOrEmbed(context.TODO(), c.id, c.text, s.semanticEmbedder); err != nil {
+			return err
+		}
+	}
+	return s.semanticCache.CleanupStale()
 }

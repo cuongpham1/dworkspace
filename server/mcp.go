@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -132,7 +133,7 @@ var mcpTools = []map[string]any{
 				"icon":         map[string]any{"type": "string", "description": "Optional emoji, \"lucide:Name\", \"mdi:Name\" or image URL"},
 				"properties":   map[string]any{"type": "object", "description": "Typed property values when creating a database row — same shape as set_properties. Call get_collection first for property ids."},
 				"cover":        map[string]any{"type": "string", "description": coverHint},
-				"description":  map[string]any{"type": "string", "description": "Optional one-line summary, shown under the title."},
+				"description":  map[string]any{"type": "string", "description": "Optional semantic abstract of a few hundred words, shown under the title."},
 				"tags":         map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Optional tags. Call list with kind=\"tags\" first and reuse what exists instead of inventing near-duplicates."},
 			},
 			"required": []string{"title"}},
@@ -1272,10 +1273,7 @@ func (s *Server) mcpSearch(u *user, q string) (string, error) {
 	// real difference: it gets the paragraph that matches together with its heading
 	// path — instead of "something is in this 4000-word page" plus having to load
 	// the whole thing.
-	hits := s.searchChunks(userID, ftsMatch(q), ws, 20)
-	if len(hits) == 0 {
-		hits = s.searchPagesFallback(userID, ftsMatch(q), ws, 20)
-	}
+	hits := s.searchHybrid(context.TODO(), userID, q, ftsMatch(q), ws, 20)
 	var b strings.Builder
 	n := 0
 	for _, h := range hits {
@@ -1283,10 +1281,14 @@ func (s *Server) mcpSearch(u *user, q string) (string, error) {
 		if title == "" {
 			title = "Untitled"
 		}
+		provenance := ""
+		if h.Source != "" && h.Kind != "" {
+			provenance = fmt.Sprintf(" [%s/%s]", h.Source, h.Kind)
+		}
 		if h.Heading != "" {
-			fmt.Fprintf(&b, "• %s › %s (id: %s)\n  %s\n", title, h.Heading, h.ID, h.Snippet)
+			fmt.Fprintf(&b, "• %s › %s%s (id: %s)\n  %s\n", title, h.Heading, provenance, h.ID, h.Snippet)
 		} else {
-			fmt.Fprintf(&b, "• %s (id: %s)\n  %s\n", title, h.ID, h.Snippet)
+			fmt.Fprintf(&b, "• %s%s (id: %s)\n  %s\n", title, provenance, h.ID, h.Snippet)
 		}
 		n++
 	}
