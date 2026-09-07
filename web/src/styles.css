@@ -113,13 +113,43 @@ button {
    quiet typography, clear hit areas (Bear as the model) rather than a dense
    tree list. */
 .sidebar {
-  width: 292px;
+  width: var(--sidebar-w, 292px);
   flex-shrink: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+}
+
+/* Dragging the sidebar wider/narrower. A thin invisible hit zone straddling
+   the border — visible only on hover/drag so it doesn't read as a permanent
+   seam down the page. Mobile ignores it entirely (see the drawer override
+   below): a fixed-width, off-canvas drawer has nothing sensible to resize. */
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle.resizing {
+  background: var(--accent, #6366f1);
+  opacity: 0.35;
+}
+
+/* While actively dragging: kill text selection and hover-driven CSS
+   transitions elsewhere in the sidebar so the drag tracks the pointer
+   exactly, instead of lagging behind an eased width transition. */
+.sidebar.resizing {
+  transition: none !important;
+  user-select: none;
 }
 
 .sidebar-header {
@@ -3476,6 +3506,15 @@ body.is-col-resizing {
   white-space: nowrap;
 }
 
+/* A chip that can navigate (RowProperties on the entity profile, not a table
+   cell — see onNavigate on PropertyValue) says so before it is even clicked. */
+.relation-chip-link {
+  cursor: pointer;
+}
+.relation-chip-link:hover {
+  text-decoration: underline;
+}
+
 /* A row icon may be an emoji (text) or an SVG. Centring the box rather than the
    glyph keeps both sitting on the same line as the title. */
 .relation-icon {
@@ -4498,31 +4537,91 @@ body.is-col-resizing {
    reader WHICH line the notification meant — on a long page the scroll alone
    leaves them looking at a screenful of text with no marker.
 
-   Ends by itself after one pass (no `infinite`): a permanent pulse would still
-   be blinking minutes later while somebody is trying to read. Animated on a
-   box-shadow inset rather than `background`, so it cannot fight a block that
-   already has a background colour of its own (callouts, coloured blocks). */
-@keyframes block-flash {
-  0% {
-    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--accent) 26%, transparent);
-  }
-  100% {
-    box-shadow: inset 0 0 0 9999px transparent;
-  }
-}
-
-.block-flash {
+   This is a separate `<div>` this module owns (see revealBlock.ts), tracked
+   over the block's live bounding rect every frame — NOT a class added to the
+   block's own element. ProseMirror periodically rebuilds a block's DOM from
+   its model for reasons that are not a content change at all (a remote
+   collaborator's cursor passing through is enough), which was silently
+   stripping a directly-added class within milliseconds, often before it ever
+   painted a single frame. Fading on background-color rather than a
+   box-shadow trick, since this overlay sits ON TOP of the block rather than
+   inside it — there is no risk of fighting a callout's own background here. */
+.block-flash-overlay {
+  position: fixed;
+  z-index: 40;
   border-radius: 4px;
-  animation: block-flash 1s ease-out 1;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  transition: background-color 1s ease-out;
+}
+.block-flash-overlay.fading {
+  background: transparent;
 }
 
 /* Somebody who asked not to see motion still needs to know which line it is,
-   so the marker stays — it just does not animate. */
+   so the marker stays — it just does not fade. */
 @media (prefers-reduced-motion: reduce) {
-  .block-flash {
-    animation: none;
-    box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--accent) 20%, transparent);
+  .block-flash-overlay {
+    transition: none;
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
   }
+  .block-flash-overlay.fading {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+}
+
+/* Markers for blocks carrying an open (unresolved) comment — rendered by
+   React in a layer of their own (see the effect in BlockContent, Editor.tsx)
+   rather than as attributes on BlockNote's own block elements: ProseMirror
+   rebuilds those from its model on view updates that are not content changes
+   at all, so anything written there directly does not survive. The anchor
+   gives the layer a stable (0,0) to position dots against; the LAYER itself
+   never intercepts a click — text underneath must stay reachable — but each
+   DOT opts back into pointer events so it can be clicked to open the
+   comment(s) it marks. */
+.comment-marker-anchor {
+  position: relative;
+}
+.comment-marker-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.comment-marker-dot {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 2px;
+  margin: 0;
+  /* .bn-editor reserves 54px of padding on each side already, so this sits
+     in that gutter rather than crowding the text or BlockNote's own drag
+     handle, which lives in the LEFT gutter. */
+  right: -30px;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.8;
+}
+.comment-marker-dot:hover { opacity: 1; }
+/* The Google Docs move: the commented passage itself carries the highlight,
+   not just an icon off in the margin — sized to the block's own live rect
+   (see markerPositions in Editor.tsx). Translucent, so the text underneath
+   stays fully readable; pointer-events restored (the layer itself passes
+   clicks through) so clicking the highlighted passage opens its thread,
+   same as clicking the dot. */
+.comment-marker-highlight {
+  position: absolute;
+  pointer-events: auto;
+  cursor: pointer;
+  border: none;
+  border-radius: 3px;
+  margin: 0;
+  padding: 0;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+.comment-marker-highlight:hover {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
 }
 
 /* ---------- Inline user mentions (@name) ---------- */
@@ -5031,6 +5130,10 @@ body.is-col-resizing {
     transition: transform 0.22s ease;
   }
 
+  .sidebar-resize-handle {
+    display: none;
+  }
+
   /* The shadow ONLY in the open state. The closed drawer has its right edge
        exactly on x=0 — so a shadow with 24px of blur stuck into the picture as a
        grey strip although the drawer itself is invisible. Exactly the smudge you
@@ -5350,10 +5453,33 @@ body.is-col-resizing {
   flex: none;
 }
 
+.notif-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
 .notif-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Which followed page a subscription notice is about — the second line that
+   turns "New Spec" into "New Spec, because Feature X changed". */
+.notif-context {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.notif-kind-icon {
+  flex: none;
+  color: var(--accent);
 }
 
 .share-input {
@@ -5533,6 +5659,91 @@ body.is-col-resizing {
 }
 .row-prop-value .prop-date {
   font-size: 14px;
+}
+
+/* ---- Entity profile: related documents + change history, gathered beside
+   RowProperties instead of scattered across a backlinks strip, a hidden
+   history modal and the tree (see EntityProfile in Editor.tsx) ---- */
+.entity-profile {
+  margin: 8px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.entity-profile-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.entity-profile-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.entity-profile-tabs button:hover {
+  background: var(--hover);
+}
+.entity-profile-tabs button.active {
+  color: var(--fg);
+  background: var(--hover);
+  font-weight: 600;
+}
+.entity-profile-count {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+.entity-profile-tabs button.active .entity-profile-count {
+  color: var(--accent);
+}
+.entity-profile-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.entity-profile-empty {
+  padding: 6px 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.entity-profile-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font-size: 13.5px;
+  text-align: left;
+}
+button.entity-profile-row:hover {
+  background: var(--hover);
+  cursor: pointer;
+}
+.entity-profile-row-icon {
+  flex: none;
+  color: var(--muted);
+}
+.entity-profile-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.entity-profile-revision {
+  color: var(--muted);
+}
+.entity-profile-row-meta {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* ---- Workspace image / icon in the switcher ---- */
@@ -8187,7 +8398,62 @@ a,
   font-size: 13px;
   color: var(--muted);
 }
+/* One thread per selected section, kept visually apart rather than every
+   section's comments interleaved by time into one shared timeline — a reply
+   belongs with the comment it replies to. The Google Docs move: each
+   section's thread is its own card (real border, background, shadow) —
+   the earlier version used only a thin left rail, and that read as "still
+   one list" rather than genuinely separate conversations. The page-level
+   thread (no section) stays plain: it is not "a" section, it is the default,
+   and does not need a card of its own. */
+.cp-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cp-thread-section {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+/* The thread a marker/highlight click just pointed at — echoes the
+   in-document highlight (see .comment-marker-highlight) so the two halves
+   of the same idea read as one motion: click the passage, its card lights
+   up over here. */
+.cp-thread-section.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.cp-thread-head {
+  display: flex;
+}
+.cp-thread-reply {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cp-thread-reply:hover { color: var(--accent); text-decoration: underline; }
 .cp-item.is-resolved { opacity: 0.5; }
+/* Clicking a comment marker dot in the document scrolls here and briefly
+   tints this one — plain background-color + transition is safe: unlike the
+   in-document flash (see .block-flash-overlay), this list is fully React's
+   own DOM, not fought over by ProseMirror. */
+.cp-item {
+  border-radius: 6px;
+  transition: background-color 1s ease-out;
+}
+.cp-item.is-highlighted {
+  background-color: color-mix(in srgb, var(--accent) 20%, transparent);
+  transition: none;
+}
 .cp-item-head {
   display: flex;
   align-items: center;
@@ -8222,6 +8488,17 @@ a,
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* @[Name](userId) rendered as a readable, non-interactive "@Name" chip — see
+   renderCommentBody in CommentsPanel.tsx. */
+.comment-mention-chip {
+  display: inline;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .cp-actions {
   display: flex;
   gap: 10px;
@@ -8250,8 +8527,103 @@ a,
    here write a paragraph and then another one. */
 .cp-compose {
   flex: none;
+  position: relative;
   border-top: 1px solid var(--border);
   padding: 12px 16px 14px;
+}
+/* The pill above the box when a "Comment" click in the formatting toolbar
+   set a target block — says plainly what will be attached, and how to back
+   out of it, instead of a comment silently landing on the wrong section. */
+.cp-pending-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-size: 12px;
+}
+.cp-pending-target-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-pending-target-clear {
+  width: 20px;
+  height: 20px;
+  color: inherit;
+}
+/* On a posted comment: which text it is about, and a way to jump to it — the
+   same "visible at the same time as the passage" idea the panel itself is
+   built around (see the file header comment), now per-comment too. */
+.cp-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin: 2px 0 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.cp-target:hover { color: var(--accent); text-decoration: underline; }
+
+/* The "@" picker: floats above the textarea rather than pushing it down, so
+   picking a name does not also shove the Send button around. */
+.cp-mention-menu {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% - 4px);
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  padding: 4px;
+  z-index: 20;
+}
+.cp-mention-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.cp-mention-item:hover,
+.cp-mention-item.active { background: var(--hover); }
+.cp-mention-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cp-mention-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-mention-item-email {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cp-compose textarea {
   width: 100%;
@@ -10120,6 +10492,20 @@ body:has(.confirm-dialog) .dialog:not(.confirm-dialog) {
   align-items: center;
   gap: 6px;
   cursor: pointer;
+}
+/* A relation's dashed line has its own colour per label — this dot is the
+   same colour, so the toggle for "Impacts Metric" reads as the thing it
+   turns off rather than a plain checkbox among identical ones. */
+.graph-filter-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.graph-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .graph-hint {
   margin-left: auto;

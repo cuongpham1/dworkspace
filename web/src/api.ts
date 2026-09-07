@@ -379,7 +379,7 @@ export const api = {
     }),
   search: (q: string) => req<SearchResult[]>(`/api/search?q=${encodeURIComponent(q)}`),
   backlinks: (id: string) => req<Backlink[]>(`/api/pages/${id}/backlinks`),
-  graph: () => req<{ edges: { source: string; target: string }[] }>('/api/graph'),
+  graph: () => req<{ edges: import('./types').GraphEdge[] }>('/api/graph'),
 
   getCollection: (pageId: string) => req<CollectionConfig>(`/api/collections/${pageId}`),
   // Who says they are working on what. Filtered per page on the server — the
@@ -659,26 +659,23 @@ export const api = {
     req<DworkspaceFile[]>(
       '/api/files?' + new URLSearchParams(scope as Record<string, string>).toString(),
     ),
-  // Mentions of the signed-in account. There is no parameter for "whose" —
-  // the server answers for the caller and nobody else.
-  notifications: () =>
-    req<
-      {
-        pageId: string;
-        // The block the "@" sits in, so opening it can jump to the line rather
-        // than the top of the page. Empty when the mention predates that field.
-        blockId: string;
-        title: string;
-        icon: string;
-        at: string;
-        seen: boolean;
-      }[]
-    >('/api/notifications'),
-  markNotificationsRead: (pageId?: string) =>
+  // Mentions AND page-subscription notices of the signed-in account, merged
+  // and sorted server-side. There is no parameter for "whose" — the server
+  // answers for the caller and nobody else.
+  notifications: () => req<import('./types').Notice[]>('/api/notifications'),
+  // id is the prefixed notice id ("mention:<pageId>" or "sub:<noticeId>");
+  // omitted, it clears every unread notice of both kinds.
+  markNotificationsRead: (id?: string) =>
     req<{ ok: boolean }>('/api/notifications/read', {
       method: 'POST',
-      body: JSON.stringify(pageId ? { pageId } : {}),
+      body: JSON.stringify(id ? { id } : {}),
     }),
+  // Following a page: told when something new links to it (see subscriptions.go).
+  listSubscriptions: () => req<string[]>('/api/subscriptions'),
+  subscribe: (pageId: string) =>
+    req<{ ok: boolean }>(`/api/pages/${pageId}/subscribe`, { method: 'POST' }),
+  unsubscribe: (pageId: string) =>
+    req<{ ok: boolean }>(`/api/pages/${pageId}/subscribe`, { method: 'DELETE' }),
   addWorkspaceMember: (workspaceId: string, email: string, role: 'admin' | 'member' | 'viewer') =>
     req<{ ok: boolean }>(`/api/workspaces/${workspaceId}/members`, {
       method: 'POST',

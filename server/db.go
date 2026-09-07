@@ -441,6 +441,22 @@ CREATE TABLE IF NOT EXISTS skill_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_skill_audit_skill ON skill_audit(skill_id, id);
 CREATE INDEX IF NOT EXISTS idx_skill_audit_ws ON skill_audit(workspace_id, id);
+-- One row per (comment, mentioned user) — unlike "mentions" (page content,
+-- keyed page+user, resynced whole on every save), a comment is never edited
+-- in place, so there is nothing to resync: one extraction at creation time,
+-- one row per person named, cleaned up automatically when the comment goes
+-- (ON DELETE CASCADE) rather than by a reconciliation pass.
+CREATE TABLE IF NOT EXISTS comment_mentions (
+	id TEXT PRIMARY KEY,
+	comment_id TEXT NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+	user_id TEXT NOT NULL,
+	block_id TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	seen_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_comment_mention_user ON comment_mentions(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_comment_mention_comment ON comment_mentions(comment_id);
 `
 
 // ensureColumn adds a column to an existing table if it is missing
@@ -882,6 +898,41 @@ func openDB(path string) (*sql.DB, error) {
 		`CREATE INDEX IF NOT EXISTS idx_mention_user ON mentions(user_id, seen_at, first_seen_at)`,
 	); err != nil {
 		return nil, fmt.Errorf("index mentions: %w", err)
+	}
+	// Who is following which page (Feature/Metric/... profile), so a new
+	// document that links to it can reach them. One row per (page, user) —
+	// following twice is not two subscriptions.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS page_subscriptions (
+		page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+		user_id TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		PRIMARY KEY (page_id, user_id)
+	)`); err != nil {
+		return nil, fmt.Errorf("create page_subscriptions: %w", err)
+	}
+	if _, err := db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_subscription_user ON page_subscriptions(user_id)`,
+	); err != nil {
+		return nil, fmt.Errorf("index page_subscriptions: %w", err)
+	}
+	// One row per (subscriber, new source page) event, unlike mentions: several
+	// different new documents can each link to the same watched page, and each
+	// is its own notice — collapsing them the way mentions collapse re-saves
+	// would silently drop all but the first.
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS subscription_notices (
+		id TEXT PRIMARY KEY,
+		page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+		source_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+		user_id TEXT NOT NULL,
+		created_at TEXT NOT NULL,
+		seen_at TEXT
+	)`); err != nil {
+		return nil, fmt.Errorf("create subscription_notices: %w", err)
+	}
+	if _, err := db.Exec(
+		`CREATE INDEX IF NOT EXISTS idx_subscription_notice_user ON subscription_notices(user_id, seen_at, created_at)`,
+	); err != nil {
+		return nil, fmt.Errorf("index subscription_notices: %w", err)
 	}
 	// Record the schema/app version so an operator (and future migrations) can
 	// see what a data dir was last written by. Additive, idempotent.

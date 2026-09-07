@@ -87,9 +87,8 @@ func (s *Server) mcpComments(u *user, pageID, action, body, blockID, commentID s
 		if strings.TrimSpace(body) == "" {
 			return "", fmt.Errorf("body is required for action=add")
 		}
-		id := newID()
-		if _, err := s.db.Exec(`INSERT INTO comments (id, page_id, block_id, author_id, author_name, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			id, pageID, blockID, u.ID, u.Name, strings.TrimSpace(body), now()); err != nil {
+		id, err := s.createComment(pageID, blockID, u.ID, u.Name, strings.TrimSpace(body))
+		if err != nil {
 			return "", err
 		}
 		return "Added comment " + id, nil

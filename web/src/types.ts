@@ -87,6 +87,33 @@ export interface Backlink {
   icon: string;
 }
 
+/** One line in the bell: a mention or a subscription notice, merged and
+ *  sorted server-side (see handleNotifications). `id` carries the prefix
+ *  ("mention:"/"sub:") a read-receipt needs to address the right table. */
+export interface Notice {
+  id: string;
+  kind: 'mention' | 'comment_mention' | 'subscription';
+  pageId: string;
+  blockId?: string;
+  title: string;
+  icon: string;
+  authorName?: string;
+  body?: string;
+  followedId?: string;
+  followedTitle?: string;
+  at: string;
+  seen: boolean;
+}
+
+/** One connection in the workspace graph — a markdown link, or a database
+ *  relation property read as an edge (see relationGraphEdges). */
+export interface GraphEdge {
+  source: string;
+  target: string;
+  kind: 'link' | 'relation';
+  label?: string;
+}
+
 export interface User {
   id: string;
   email: string;

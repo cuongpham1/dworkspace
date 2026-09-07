@@ -1,18 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
-import type { PageMeta } from '../types';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Download } from 'lucide-react';
+import type { GraphEdge, PageMeta } from '../types';
 import { t, plural } from '../i18n';
 
 // The graph: every page as a dot, every connection as a line, settling into
 // shape by itself.
 //
-// Two kinds of edge, and keeping them apart is what makes it readable rather
+// Three kinds of edge, and keeping them apart is what makes it readable rather
 // than decorative:
 //
-//   PARENT  where a page is filed. Structure, drawn thin and quiet — it is the
-//           thing the sidebar already tells you.
-//   LINK    a mention of one page inside another. Drawn bright, because THIS is
-//           what a graph is for: the connection nobody filed anywhere, the one
-//           you cannot see in a tree.
+//   PARENT    where a page is filed. Structure, drawn thin and quiet — it is
+//             the thing the sidebar already tells you.
+//   LINK      a mention of one page inside another. Drawn bright, because THIS
+//             is what a graph is for: the connection nobody filed anywhere,
+//             the one you cannot see in a tree.
+//   RELATION  a database relation property — a real, human-named connection
+//             a team already built (Feature "depends on" Feature, Feature
+//             "impacts" Metric). Drawn in its own colour per distinct label,
+//             since "depends on" and "impacts" mean different things and a
+//             reader filtering the graph needs to tell them apart.
 //
 // Canvas, not SVG, and no library. A thousand nodes as DOM elements is a
 // slideshow; the same thousand on a canvas is a smooth 60fps, and the force
@@ -22,6 +28,7 @@ const REPULSION = 5200; // how hard two dots push apart
 const SPRING = 0.012; // how hard an edge pulls together
 const PARENT_LEN = 70; // resting length of a "filed under" edge
 const LINK_LEN = 130; // a mention may sit further away
+const RELATION_LEN = 150;
 const DAMPING = 0.86;
 const CENTER_PULL = 0.004;
 
@@ -48,6 +55,11 @@ const HUES = [
   '#5f6fe0',
 ];
 
+// Relation edges get their own small palette, distinct from node colours (root
+// families) so a "depends on" line is never confused for "this page belongs to
+// that cluster".
+const RELATION_HUES = ['#e2645a', '#9a5fd6', '#e0a53b', '#2fb6bd', '#e070ab', '#5f6fe0'];
+
 interface Node {
   id: string;
   title: string;
@@ -65,21 +77,67 @@ interface Node {
 interface Edge {
   a: number;
   b: number;
-  kind: 'parent' | 'link';
+  kind: 'parent' | 'link' | 'relation';
+  // Which toggle this edge belongs to: 'parent', 'link', or "relation:<label>"
+  // for a relation, so two differently-named relation fields can be shown or
+  // hidden independently.
+  filterKey: string;
+  color: string;
+}
+
+// The set of nodes within `hops` steps of `focusId`, walking every edge kind —
+// what "See related graph" actually shows: not the whole workspace, just what
+// is reachable from here.
+function neighborhood(focusId: string, pages: PageMeta[], linkEdges: GraphEdge[], hops: number): Set<string> {
+  const adj = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    if (!adj.has(a)) adj.set(a, new Set());
+    adj.get(a)!.add(b);
+  };
+  for (const p of pages) {
+    if (p.parentId) {
+      link(p.id, p.parentId);
+      link(p.parentId, p.id);
+    }
+  }
+  for (const e of linkEdges) {
+    link(e.source, e.target);
+    link(e.target, e.source);
+  }
+  let frontier = new Set([focusId]);
+  const seen = new Set([focusId]);
+  for (let h = 0; h < hops; h++) {
+    const next = new Set<string>();
+    for (const id of frontier) {
+      for (const nb of adj.get(id) ?? []) {
+        if (!seen.has(nb)) {
+          seen.add(nb);
+          next.add(nb);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return seen;
 }
 
 export default function GraphView({
   pages,
   edges: linkEdges,
   onNavigate,
+  focusId,
 }: {
   pages: PageMeta[];
-  edges: { source: string; target: string }[];
+  edges: GraphEdge[];
   onNavigate: (id: string) => void;
+  // When set, the graph shows only this page's neighborhood (2 hops) instead
+  // of the whole workspace — what "See related graph" on a page opens into.
+  focusId?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoverTitle, setHoverTitle] = useState<string | null>(null);
-  const [showParents, setShowParents] = useState(true);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [showWhole, setShowWhole] = useState(!focusId);
   const [counts, setCounts] = useState({ nodes: 0, links: 0 });
 
   // Everything the simulation touches lives in refs: React state at 60fps would
@@ -95,12 +153,41 @@ export default function GraphView({
     alpha: number;
   }>({ nodes: [], edges: [], byId: new Map(), hover: null, drag: null, pan: { x: 0, y: 0 }, zoom: 1, alpha: 1 });
 
-  const showParentsRef = useRef(showParents);
-  showParentsRef.current = showParents;
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
+
+  // Every distinct filter a reader can toggle: "Where pages are filed" (parent),
+  // "Mentions" (link) if any exist, and one entry per distinct relation label.
+  // Built from the DATA rather than hard-coded, because relation labels are
+  // whatever a team named their own database column.
+  const filters = useMemo(() => {
+    const relationLabels = new Set<string>();
+    let hasLink = false;
+    for (const e of linkEdges) {
+      if (e.kind === 'relation') relationLabels.add(e.label || t('Relation'));
+      else hasLink = true;
+    }
+    const list: { key: string; label: string; color: string }[] = [
+      { key: 'parent', label: t('Where pages are filed'), color: '' },
+    ];
+    if (hasLink) list.push({ key: 'link', label: t('Mentions'), color: '' });
+    [...relationLabels].sort().forEach((label, i) => {
+      list.push({ key: 'relation:' + label, label, color: RELATION_HUES[i % RELATION_HUES.length] });
+    });
+    return list;
+  }, [linkEdges]);
+
+  const focusSet = useMemo(
+    // Every edge kind counts here — a page reachable only through a relation
+    // field (Feature "impacts" Metric) is exactly the kind of connection
+    // "See related graph" exists to surface, not one to leave out.
+    () => (focusId && !showWhole ? neighborhood(focusId, pages, linkEdges, 2) : null),
+    [focusId, showWhole, pages, linkEdges],
+  );
 
   // ---- build the graph ----
   useEffect(() => {
-    const live = pages.filter((p) => !p.trashed && !p.isTemplate);
+    const live = pages.filter((p) => !p.trashed && !p.isTemplate && (!focusSet || focusSet.has(p.id)));
     const byId = new Map<string, number>();
     const meta = new Map(live.map((p) => [p.id, p]));
     // The top-level page a dot ultimately hangs off. Guarded, because a cycle
@@ -149,10 +236,15 @@ export default function GraphView({
       };
     });
 
+    const relationColor = new Map<string, string>();
+    filters.forEach((f) => {
+      if (f.color) relationColor.set(f.key, f.color);
+    });
+
     const edges: Edge[] = [];
     for (const p of live) {
       if (p.parentId && byId.has(p.parentId) && byId.has(p.id)) {
-        edges.push({ a: byId.get(p.id)!, b: byId.get(p.parentId)!, kind: 'parent' });
+        edges.push({ a: byId.get(p.id)!, b: byId.get(p.parentId)!, kind: 'parent', filterKey: 'parent', color: '' });
       }
     }
     let links = 0;
@@ -160,8 +252,13 @@ export default function GraphView({
       const a = byId.get(e.source);
       const b = byId.get(e.target);
       if (a === undefined || b === undefined || a === b) continue;
-      edges.push({ a, b, kind: 'link' });
-      links++;
+      if (e.kind === 'relation') {
+        const key = 'relation:' + (e.label || t('Relation'));
+        edges.push({ a, b, kind: 'relation', filterKey: key, color: relationColor.get(key) ?? RELATION_HUES[0] });
+      } else {
+        edges.push({ a, b, kind: 'link', filterKey: 'link', color: '' });
+        links++;
+      }
     }
     for (const e of edges) {
       nodes[e.a].deg++;
@@ -180,10 +277,18 @@ export default function GraphView({
       n.r = 4 + Math.sqrt(n.deg) * 2.6;
       if (n.isDb) n.r = Math.max(n.r, 8);
     }
+    // The page the reader asked about should stand out and start centred —
+    // otherwise a focused graph looks exactly like a random slice.
+    if (focusId && byId.has(focusId)) {
+      const i = byId.get(focusId)!;
+      nodes[i].r = Math.max(nodes[i].r, 10);
+      nodes[i].x = 0;
+      nodes[i].y = 0;
+    }
 
     state.current = { ...state.current, nodes, edges, byId, alpha: 1, pan: { x: 0, y: 0 }, zoom: 1 };
     setCounts({ nodes: nodes.length, links });
-  }, [pages, linkEdges]);
+  }, [pages, linkEdges, focusSet, focusId, filters]);
 
   // ---- simulate and draw ----
   useEffect(() => {
@@ -214,6 +319,7 @@ export default function GraphView({
       const rect = canvas.getBoundingClientRect();
       const cx = rect.width / 2;
       const cy = rect.height / 2;
+      const hide = hiddenRef.current;
 
       // --- forces ---
       // Repulsion is O(n²). Fine to a few hundred nodes, which is what a
@@ -245,13 +351,13 @@ export default function GraphView({
         }
       }
       for (const e of edges) {
-        if (e.kind === 'parent' && !showParentsRef.current) continue;
+        if (hide.has(e.filterKey)) continue;
         const a = nodes[e.a];
         const b = nodes[e.b];
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy) || 1;
-        const rest = e.kind === 'parent' ? PARENT_LEN : LINK_LEN;
+        const rest = e.kind === 'parent' ? PARENT_LEN : e.kind === 'relation' ? RELATION_LEN : LINK_LEN;
         const f = (d - rest) * SPRING;
         const fx = (dx / d) * f;
         const fy = (dy / d) * f;
@@ -292,7 +398,7 @@ export default function GraphView({
       }
 
       for (const e of edges) {
-        if (e.kind === 'parent' && !showParentsRef.current) continue;
+        if (hide.has(e.filterKey)) continue;
         const a = nodes[e.a];
         const b = nodes[e.b];
         const lit = hov === null || near.has(e.a) || near.has(e.b);
@@ -303,6 +409,11 @@ export default function GraphView({
           ctx.strokeStyle = a.color;
           ctx.globalAlpha = lit ? 0.8 : 0.07;
           ctx.lineWidth = lit ? 1.8 : 1;
+        } else if (e.kind === 'relation') {
+          ctx.strokeStyle = e.color;
+          ctx.globalAlpha = lit ? 0.85 : 0.08;
+          ctx.lineWidth = lit ? 2 : 1;
+          ctx.setLineDash([5, 3]);
         } else {
           ctx.strokeStyle = muted;
           ctx.globalAlpha = lit ? 0.4 : 0.08;
@@ -312,6 +423,7 @@ export default function GraphView({
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
         ctx.stroke();
+        ctx.setLineDash([]);
         ctx.globalAlpha = 1;
       }
 
@@ -333,7 +445,10 @@ export default function GraphView({
           ctx.fillStyle = a.color;
           ctx.fill();
         }
-        if (i === hov) {
+        // The page a focused graph is ABOUT gets a ring of its own, the same
+        // treatment hover gets, but permanent — otherwise a scoped graph looks
+        // exactly like an arbitrary slice with no obvious center.
+        if (a.id === focusId || i === hov) {
           ctx.save();
           ctx.shadowColor = a.color;
           ctx.shadowBlur = 18;
@@ -348,10 +463,10 @@ export default function GraphView({
         }
         // Labels only for the big ones and for whatever is under the pointer:
         // every label at once is a wall of text with a graph behind it.
-        if ((a.r > 7 || a.isDb || i === hov) && lit && s.zoom > 0.55) {
+        if ((a.r > 7 || a.isDb || i === hov || a.id === focusId) && lit && s.zoom > 0.55) {
           ctx.globalAlpha = i === hov ? 1 : 0.75;
           ctx.fillStyle = fg;
-          ctx.font = `${i === hov ? 600 : 400} 11px system-ui, sans-serif`;
+          ctx.font = `${i === hov || a.id === focusId ? 600 : 400} 11px system-ui, sans-serif`;
           ctx.textAlign = 'center';
           const label = a.title.length > 26 ? a.title.slice(0, 25) + '…' : a.title;
           ctx.fillText(label, a.x, a.y + a.r + 12);
@@ -366,7 +481,7 @@ export default function GraphView({
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
     };
-  }, []);
+  }, [focusId]);
 
   // ---- pointer ----
   const toWorld = (ev: React.MouseEvent) => {
@@ -401,6 +516,26 @@ export default function GraphView({
   // to count as a drag.
   const downAt = useRef<{ x: number; y: number } | null>(null);
   const moved = useRef(false);
+
+  const toggleFilter = (key: string) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    state.current.alpha = 1;
+  };
+
+  const exportImage = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'graph.png';
+    a.click();
+  };
 
   return (
     <div className="graph-wrap">
@@ -473,17 +608,26 @@ export default function GraphView({
           {plural(counts.nodes, '{n} page', '{n} pages')} ·{' '}
           {plural(counts.links, '{n} link', '{n} links')}
         </span>
-        <label className="graph-toggle">
-          <input
-            type="checkbox"
-            checked={showParents}
-            onChange={(e) => {
-              setShowParents(e.target.checked);
-              state.current.alpha = 1;
-            }}
-          />
-          {t('Show where pages are filed')}
-        </label>
+        {focusId && (
+          <label className="graph-toggle">
+            <input type="checkbox" checked={showWhole} onChange={(e) => setShowWhole(e.target.checked)} />
+            {t('Show the whole workspace')}
+          </label>
+        )}
+        {filters.map((f) => (
+          <label className="graph-toggle" key={f.key}>
+            <input
+              type="checkbox"
+              checked={!hidden.has(f.key)}
+              onChange={() => toggleFilter(f.key)}
+            />
+            {f.color && <span className="graph-filter-swatch" style={{ background: f.color }} />}
+            {f.label}
+          </label>
+        ))}
+        <button className="btn-sm graph-export" onClick={exportImage} title={t('Save as image')}>
+          <Download size={13} /> {t('Export')}
+        </button>
         <span className="graph-hint">{t('Drag a dot, scroll to zoom, click to open')}</span>
       </div>
       {hoverTitle && <div className="graph-tip">{hoverTitle}</div>}

@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 )
 
 // User mentions. An "@name" in a page body is stored inside BlockNote content
@@ -123,7 +124,12 @@ func (s *Server) updateMentions(pageID, content string, trashed bool) {
 	tx.Commit()
 }
 
+// mentionNotice's ID is always "mention:"+pageId — a mention is keyed
+// (page, user), so the page id already identifies it uniquely, unlike a
+// subscription notice (see subscriptions.go), which needs its own row id.
 type mentionNotice struct {
+	ID      string `json:"id"`
+	Kind    string `json:"kind"`
 	PageID  string `json:"pageId"`
 	BlockID string `json:"blockId"`
 	Title   string `json:"title"`
@@ -132,11 +138,7 @@ type mentionNotice struct {
 	Seen    bool   `json:"seen"`
 }
 
-// handleNotifications lists the caller's mentions, newest first, unread ones
-// included. Read entries stay in the list (a notification you have seen is
-// still how you find the page again) but stop counting towards the badge.
-func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
-	me := requestUser(r).ID
+func (s *Server) listMentionNotices(me string) []mentionNotice {
 	rows, err := s.db.Query(`
 		SELECT m.page_id, COALESCE(m.block_id, ''), p.title, COALESCE(p.icon, ''),
 		       m.first_seen_at, m.seen_at
@@ -145,8 +147,7 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 		ORDER BY m.first_seen_at DESC
 		LIMIT 100`, me)
 	if err != nil {
-		httpError(w, 500, err.Error())
-		return
+		return nil
 	}
 	// Drain BEFORE the canRead calls below: on a single database connection a
 	// query issued inside an open cursor blocks the server (same rule the
@@ -176,31 +177,97 @@ func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
 			title = "Untitled"
 		}
 		out = append(out, mentionNotice{
+			ID: "mention:" + it.id, Kind: "mention",
 			PageID: it.id, BlockID: it.block, Title: title, Icon: it.icon,
 			At: it.at, Seen: it.seen != nil,
 		})
 	}
+	return out
+}
+
+// handleNotifications merges mentions, comment mentions, and
+// page-subscription notices (see comment_mentions.go, subscriptions.go) into
+// one chronologically sorted feed, newest first — one bell answers "did
+// anybody need me?" (in a document, or in a comment) and "did something I
+// follow just change?" rather than asking a person to check three separate
+// places. Read entries stay in the list (a notification you have seen is
+// still how you find the page again) but stop counting towards the badge.
+func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
+	me := requestUser(r).ID
+	mentions := s.listMentionNotices(me)
+	cmentions := s.listCommentMentionNotices(me)
+	subs := s.listSubscriptionNotices(me)
+
+	type notice struct {
+		ID         string `json:"id"`
+		Kind       string `json:"kind"`
+		PageID     string `json:"pageId"`
+		BlockID    string `json:"blockId,omitempty"`
+		Title      string `json:"title"`
+		Icon       string `json:"icon"`
+		Author     string `json:"authorName,omitempty"`
+		Body       string `json:"body,omitempty"`
+		FollowedID string `json:"followedId,omitempty"`
+		Followed   string `json:"followedTitle,omitempty"`
+		At         string `json:"at"`
+		Seen       bool   `json:"seen"`
+	}
+	out := make([]notice, 0, len(mentions)+len(cmentions)+len(subs))
+	for _, m := range mentions {
+		out = append(out, notice{
+			ID: m.ID, Kind: m.Kind, PageID: m.PageID, BlockID: m.BlockID,
+			Title: m.Title, Icon: m.Icon, At: m.At, Seen: m.Seen,
+		})
+	}
+	for _, cm := range cmentions {
+		out = append(out, notice{
+			ID: cm.ID, Kind: "comment_mention", PageID: cm.PageID, BlockID: cm.BlockID,
+			Title: cm.Title, Icon: cm.Icon, Author: cm.Author, Body: cm.Body, At: cm.At, Seen: cm.Seen,
+		})
+	}
+	for _, sn := range subs {
+		out = append(out, notice{
+			ID: sn.ID, Kind: "subscription", PageID: sn.PageID, Title: sn.Title, Icon: sn.Icon,
+			FollowedID: sn.FollowedID, Followed: sn.FollowedTtl, At: sn.At, Seen: sn.Seen,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].At > out[j].At })
 	writeJSON(w, out)
 }
 
-// handleNotificationsRead marks mentions seen. With a pageId it marks that one
-// page (opening a mention is what reads it); without, it clears the lot —
-// the "mark all as read" a full list needs to be dismissable.
+// handleNotificationsRead marks one notification read by its prefixed id
+// ("mention:<pageId>" or "sub:<noticeId>"), or clears every unread notice of
+// both kinds when no id is given — the "mark all as read" a full list needs
+// to be dismissable.
 func (s *Server) handleNotificationsRead(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		PageID string `json:"pageId"`
+		ID string `json:"id"`
 	}
 	// An empty body is the "all" case, so a decode failure is not an error.
 	_ = decodeJSON(w, r, &body)
 	me := requestUser(r).ID
 	var err error
-	if body.PageID != "" {
-		_, err = s.db.Exec(
-			`UPDATE mentions SET seen_at = ? WHERE user_id = ? AND page_id = ? AND seen_at IS NULL`,
-			now(), me, body.PageID)
-	} else {
-		_, err = s.db.Exec(
-			`UPDATE mentions SET seen_at = ? WHERE user_id = ? AND seen_at IS NULL`, now(), me)
+	switch {
+	case body.ID == "":
+		if _, e := s.db.Exec(`UPDATE mentions SET seen_at = ? WHERE user_id = ? AND seen_at IS NULL`, now(), me); e != nil {
+			err = e
+		}
+		if e := s.markAllCommentMentionNoticesRead(me); e != nil {
+			err = e
+		}
+		if e := s.markAllSubscriptionNoticesRead(me); e != nil {
+			err = e
+		}
+	default:
+		if pageID, ok := stripPrefix(body.ID, "mention:"); ok {
+			_, err = s.db.Exec(
+				`UPDATE mentions SET seen_at = ? WHERE user_id = ? AND page_id = ? AND seen_at IS NULL`,
+				now(), me, pageID)
+		} else if noticeID, ok := stripPrefix(body.ID, "cmention:"); ok {
+			err = s.markCommentMentionNoticeRead(me, noticeID)
+		} else if noticeID, ok := stripPrefix(body.ID, "sub:"); ok {
+			err = s.markSubscriptionNoticeRead(me, noticeID)
+		}
 	}
 	if err != nil {
 		httpError(w, 500, err.Error())

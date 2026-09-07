@@ -202,9 +202,8 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 400, "comment is too long")
 		return
 	}
-	id := newID()
-	if _, err := s.db.Exec(`INSERT INTO comments (id, page_id, block_id, author_id, author_name, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, pageID, body.BlockID, u.ID, u.Name, strings.TrimSpace(body.Body), now()); err != nil {
+	id, err := s.createComment(pageID, body.BlockID, u.ID, u.Name, strings.TrimSpace(body.Body))
+	if err != nil {
 		httpError(w, 500, err.Error())
 		return
 	}

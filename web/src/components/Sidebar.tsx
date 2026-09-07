@@ -27,6 +27,12 @@ import { tagColorClass } from '../tags';
 import { childrenForSection, topLevelForDocs } from '../treeMode';
 import ThemeSwitch, { type ThemePref } from '../ThemeSwitch';
 
+// Drag-to-resize width bounds: narrow enough to still show a title, wide
+// enough that going further would just eat into the editor for no reason.
+const SIDEBAR_MIN_WIDTH = 220;
+const SIDEBAR_MAX_WIDTH = 520;
+const SIDEBAR_DEFAULT_WIDTH = 292;
+
 interface Props {
   pages: PageMeta[];
   favorites: string[];
@@ -732,6 +738,34 @@ export default function Sidebar({
   const [addFor, setAddFor] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const dragId = useRef<string | null>(null);
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem('dworkspace-sidebar-width'));
+    return saved >= SIDEBAR_MIN_WIDTH && saved <= SIDEBAR_MAX_WIDTH ? saved : SIDEBAR_DEFAULT_WIDTH;
+  });
+  const [resizing, setResizing] = useState(false);
+  const resizeStart = useRef({ x: 0, width: SIDEBAR_DEFAULT_WIDTH });
+  const startResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizeStart.current = { x: e.clientX, width };
+    setResizing(true);
+  };
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (e: MouseEvent) => {
+      const next = resizeStart.current.width + (e.clientX - resizeStart.current.x);
+      setWidth(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, next)));
+    };
+    const onUp = () => setResizing(false);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [resizing]);
+  useEffect(() => {
+    if (!resizing) localStorage.setItem('dworkspace-sidebar-width', String(width));
+  }, [resizing, width]);
   const favSet = useMemo(() => new Set(favorites), [favorites]);
   const byIdAll = useMemo(() => new Map(pages.map((p) => [p.id, p])), [pages]);
   const favPages = useMemo(
@@ -1134,7 +1168,10 @@ export default function Sidebar({
   };
 
   return (
-    <aside className={'sidebar' + (open ? ' open' : '')}>
+    <aside
+      className={'sidebar' + (open ? ' open' : '') + (resizing ? ' resizing' : '')}
+      style={{ '--sidebar-w': `${width}px` } as React.CSSProperties}
+    >
       <div className="sidebar-header">
         <div className="ws-switcher" ref={wsMenuRef}>
           <button className="ws-btn" onClick={() => setWsMenuOpen((o) => !o)}>
@@ -1560,6 +1597,11 @@ export default function Sidebar({
           />
         )}
       </div>
+      <div
+        className={'sidebar-resize-handle' + (resizing ? ' resizing' : '')}
+        onMouseDown={startResize}
+        title={t('Drag to resize')}
+      />
     </aside>
   );
 }

@@ -3,13 +3,19 @@ import {
   useCreateBlockNote,
   SuggestionMenuController,
   getDefaultReactSlashMenuItems,
+  FormattingToolbarController,
+  FormattingToolbar,
+  getFormattingToolbarItems,
+  useBlockNoteEditor,
+  useComponentsContext,
 } from '@blocknote/react';
 import { filterSuggestionItems, insertOrUpdateBlockForSlashMenu } from '@blocknote/core';
 import { en as coreEn } from '@blocknote/core/locales';
 import { BlockNoteView } from '@blocknote/mantine';
 import { api } from '../api';
 import { toast } from '../toast';
-import type { Backlink, CollectionConfig, Page, PageMeta, PropOption, User } from '../types';
+import type { Backlink, CollectionConfig, Page, PageMeta, PropOption, Revision, User } from '../types';
+import { formatRelative } from '../format';
 import { DworkspaceProvider } from '../collab';
 import { plural, t } from '../i18n';
 import PropertyValue from './PropertyValue';
@@ -17,6 +23,7 @@ import { dworkspaceSchema } from '../pageLink';
 import IconPicker from './IconPicker';
 import { PageIcon } from '../pageIcon';
 import { BlockContext } from '../blockContext';
+import { revealBlock } from '../revealBlock';
 import CollectionView from './CollectionView';
 import { HistoryModal } from './PageHistory';
 import ProposalReviewModal from './ProposalReviewModal';
@@ -35,8 +42,49 @@ import { usePeers, setPeers, clearPeers } from '../presence';
 import { tagColorClass, TAG_PALETTE } from '../tags';
 import { collectTags, suggestTags } from '../tagSuggest';
 import { useMenuDismiss } from '../modal';
-import { Menu, Star, Lock, LockOpen, Globe, MessageSquare, History, MoreHorizontal, Printer, FileCode, FileText, Upload, AlignLeft, Check, Image as ImageIcon , Smile, PanelRight, Link2, Trash2, FilePlus2, Columns2, Workflow} from 'lucide-react';
+import { Menu, Star, Lock, LockOpen, Globe, MessageSquare, History, MoreHorizontal, Printer, FileCode, FileText, Upload, AlignLeft, Check, Image as ImageIcon , Smile, PanelRight, Link2, Trash2, FilePlus2, Columns2, Workflow, Rss, GitCompare, Clock3} from 'lucide-react';
 import { blockTypeFor, carriesExternalFiles } from '../dropFiles';
+
+// Flattens one BlockNote block's inline content down to plain text, for the
+// short "commenting on: …" preview — the comment itself only ever stores a
+// block id, so this is the one place that id gets turned back into something
+// a person recognizes.
+function blockPlainText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(blockPlainText).filter(Boolean).join('');
+  if (value && typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    if (typeof v.text === 'string') return v.text;
+    return blockPlainText(v.content) || '';
+  }
+  return '';
+}
+
+/** The "@" of comments: adds one button to BlockNote's selection toolbar so a
+ *  person can attach a comment to the exact block their cursor is in, instead
+ *  of every comment landing on the page as a whole. Defined once at module
+ *  scope — a fresh component identity on every render would remount (and so
+ *  flicker) the whole toolbar. */
+function CommentFormattingToolbar({ onAddSectionComment }: { onAddSectionComment?: (blockId: string, snippet: string) => void }) {
+  const editor = useBlockNoteEditor();
+  const components = useComponentsContext();
+  if (!components || !onAddSectionComment) return <FormattingToolbar>{getFormattingToolbarItems()}</FormattingToolbar>;
+  return (
+    <FormattingToolbar>
+      {getFormattingToolbarItems()}
+      <components.FormattingToolbar.Button
+        mainTooltip={t('Comment on this section')}
+        label={t('Comment')}
+        icon={<MessageSquare size={16} />}
+        onClick={() => {
+          const pos = editor.getTextCursorPosition();
+          const snippet = blockPlainText(pos.block.content).trim().slice(0, 140);
+          onAddSectionComment(pos.block.id, snippet);
+        }}
+      />
+    </FormattingToolbar>
+  );
+}
 
 export interface EditorProps {
   pageId: string;
@@ -61,6 +109,11 @@ export interface EditorProps {
   onTrash: (id: string) => void;
   onPagesChanged: () => void;
   initialProposalId?: string;
+  onOpenGraph: (id: string) => void;
+  // Following this page — told when something new links to it (see
+  // NotificationBell / subscriptions.go).
+  subscribed: boolean;
+  onToggleSubscribe: (id: string) => void;
 }
 
 export default function Editor(props: EditorProps) {
@@ -74,6 +127,17 @@ export default function Editor(props: EditorProps) {
   // his colleagues work in them all day and reported the old shape as awkward:
   // at the very bottom, and two lines to write in.
   const [commentsOpen, setCommentsOpen] = useState(commentsPanelOpen);
+  // Set by the formatting toolbar's "Comment" button — the next comment sent
+  // attaches to this block instead of the page as a whole. Cleared once sent,
+  // dismissed by hand, or when the panel closes (a comment box left open with
+  // a stale target from three edits ago would be a trap, not a convenience).
+  const [pendingComment, setPendingComment] = useState<{ blockId: string; snippet: string } | null>(null);
+  // Set by clicking a comment marker dot in the document — tells the panel
+  // which comment(s) to scroll to and highlight once it opens. `at` makes
+  // clicking the SAME dot twice in a row (panel already open, already
+  // scrolled there) still re-trigger the highlight instead of being a no-op
+  // React state update.
+  const [openCommentTarget, setOpenCommentTarget] = useState<{ blockId: string; at: number } | null>(null);
 
   // Both panels occupy the same strip on the right, so opening one closes the
   // other. Sharing the width would leave two columns too narrow to be either.
@@ -91,9 +155,23 @@ export default function Editor(props: EditorProps) {
     if (on) {
       setStructureOpen(false);
       setStructurePanelOpen(false);
+    } else {
+      setPendingComment(null);
     }
   };
   const toggleStructure = () => showStructure(!structureOpen);
+  const addSectionComment = (blockId: string, snippet: string) => {
+    setPendingComment({ blockId, snippet });
+    showComments(true);
+    // Confirms which block got picked — without this, selecting text and
+    // clicking "Comment on this section" changes nothing visible about the
+    // section itself, only the pill text in a panel that just slid open.
+    revealBlock(blockId);
+  };
+  const openCommentAt = (blockId: string) => {
+    showComments(true);
+    setOpenCommentTarget({ blockId, at: Date.now() });
+  };
 
   useEffect(() => {
     let alive = true;
@@ -171,12 +249,19 @@ export default function Editor(props: EditorProps) {
             onCreatePage={props.onCreatePage}
             onPagesChanged={props.onPagesChanged}
             onReset={() => setNonce((n) => n + 1)}
+            onAddSectionComment={canComment ? addSectionComment : undefined}
+            onOpenCommentAt={canComment ? openCommentAt : undefined}
           />
         )}
       </PageHeader>
       {commentsOpen && canComment && (
         <CommentsPanel
           pageId={page.id}
+          pendingBlockId={pendingComment?.blockId}
+          pendingSnippet={pendingComment?.snippet}
+          onClearPending={() => setPendingComment(null)}
+          highlightTarget={openCommentTarget}
+          workspaceId={page.workspaceId}
           myUserId={props.user.id}
           open
           onClose={() => showComments(false)}
@@ -331,11 +416,13 @@ function RowProperties({
   parentId,
   initialProps,
   canEdit,
+  onNavigate,
 }: {
   pageId: string;
   parentId: string;
   initialProps: Record<string, unknown>;
   canEdit: boolean;
+  onNavigate: (id: string | null) => void;
 }) {
   const [config, setConfig] = useState<CollectionConfig | null>(null);
   const [props, setProps] = useState<Record<string, unknown>>(initialProps ?? {});
@@ -392,10 +479,81 @@ function RowProperties({
               onChange={canEdit ? (v) => setProp(p.id, v) : undefined}
               onOptionsChange={canEdit ? (o) => setOptions(p.id, o) : undefined}
               readOnly={!canEdit}
+              onNavigate={(id) => onNavigate(id)}
             />
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+type ProfileTab = 'related' | 'history';
+
+// EntityProfile: what a Feature/Metric row scatters across the tree, the
+// version history modal and a strip at the foot of the body, gathered into
+// one place instead — the painpoint being "information about one entity
+// lives in three UI locations, none of them where you land first". Nothing
+// here is new DATA: backlinks and revisions both already existed (see
+// Backlinks and HistoryModal); this is a second, purpose-built view onto the
+// same two endpoints, shown right where RowProperties already answers "what
+// IS this" — so "who points at it" and "how did it get here" sit beside it
+// rather than below the fold or behind a menu.
+function EntityProfile({ pageId, onNavigate }: { pageId: string; onNavigate: (id: string | null) => void }) {
+  const [tab, setTab] = useState<ProfileTab>('related');
+  const [related, setRelated] = useState<Backlink[] | null>(null);
+  const [revisions, setRevisions] = useState<Revision[] | null>(null);
+
+  useEffect(() => {
+    setRelated(null);
+    setRevisions(null);
+    let alive = true;
+    api.backlinks(pageId).then((l) => alive && setRelated(l)).catch(() => alive && setRelated([]));
+    api.listRevisions(pageId).then((l) => alive && setRevisions(l)).catch(() => alive && setRevisions([]));
+    return () => {
+      alive = false;
+    };
+  }, [pageId]);
+
+  return (
+    <div className="entity-profile">
+      <div className="entity-profile-tabs" role="tablist">
+        <button className={tab === 'related' ? 'active' : ''} onClick={() => setTab('related')} role="tab" aria-selected={tab === 'related'}>
+          <Link2 size={14} /> {t('Related documents')}
+          {related && related.length > 0 && <span className="entity-profile-count">{related.length}</span>}
+        </button>
+        <button className={tab === 'history' ? 'active' : ''} onClick={() => setTab('history')} role="tab" aria-selected={tab === 'history'}>
+          <Clock3 size={14} /> {t('Change history')}
+        </button>
+      </div>
+      <div className="entity-profile-body">
+        {tab === 'related' ? (
+          related === null ? (
+            <div className="entity-profile-empty">{t('Loading…')}</div>
+          ) : related.length === 0 ? (
+            <div className="entity-profile-empty">{t('Nothing links here yet.')}</div>
+          ) : (
+            related.map((l) => (
+              <button key={l.id} className="entity-profile-row" onClick={() => onNavigate(l.id)}>
+                <PageIcon icon={l.icon} size={15} fallback={<FileText size={15} />} />
+                <span className="entity-profile-row-title">{l.title || t('Untitled')}</span>
+              </button>
+            ))
+          )
+        ) : revisions === null ? (
+          <div className="entity-profile-empty">{t('Loading…')}</div>
+        ) : revisions.length === 0 ? (
+          <div className="entity-profile-empty">{t('No changes recorded yet.')}</div>
+        ) : (
+          revisions.map((r) => (
+            <div key={r.id} className="entity-profile-row entity-profile-revision">
+              <Clock3 size={14} className="entity-profile-row-icon" />
+              <span className="entity-profile-row-title">{r.title || t('Untitled')}</span>
+              <span className="entity-profile-row-meta">{r.authorName} · {formatRelative(r.createdAt)}</span>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -423,6 +581,9 @@ function PageHeader({
   onToggleComments,
   children,
   initialProposalId,
+  onOpenGraph,
+  subscribed,
+  onToggleSubscribe,
 }: EditorProps & {
   page: Page;
   onLocalMeta: (patch: Partial<PageMeta>) => void;
@@ -887,6 +1048,24 @@ function PageHeader({
                 >
                   <FileText size={15} /> {t('Proposed revisions')}
                 </button>
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    onOpenGraph(pageId);
+                  }}
+                >
+                  <Workflow size={15} /> {t('See related graph')}
+                </button>
+                <button
+                  className="menu-item"
+                  onClick={() => {
+                    setOverflowOpen(false);
+                    onToggleSubscribe(pageId);
+                  }}
+                >
+                  <Rss size={15} /> {subscribed ? t('Following — click to unfollow') : t('Follow this page')}
+                </button>
                 {/* On a phone the topbar keeps only the star, the panel and this
                     menu — six icons side by side made the head of the page look
                     busier than its content. The three that step aside come back
@@ -1229,7 +1408,11 @@ function PageHeader({
             parentId={page.parentId}
             initialProps={page.props}
             canEdit={canEdit}
+            onNavigate={onNavigate}
           />
+        )}
+        {page.parentId && pagesById.get(page.parentId)?.type === 'collection' && (
+          <EntityProfile pageId={pageId} onNavigate={onNavigate} />
         )}
       </div>
       {children}
@@ -1307,6 +1490,14 @@ interface CollabProps {
    *  while it is closed, so the information is never in two places at once and
    *  never in none. */
   structureOpen: boolean;
+  /** Selecting "Comment" in the formatting toolbar — opens the comments panel
+   *  with this block preloaded as the target, instead of a comment landing on
+   *  the page as a whole. Undefined (rather than the panel just not existing)
+   *  when comments are off for this page, e.g. a database row. */
+  onAddSectionComment?: (blockId: string, snippet: string) => void;
+  /** Clicking a comment marker dot in the document — opens the panel and
+   *  scrolls/highlights the comment(s) attached to that block. */
+  onOpenCommentAt?: (blockId: string) => void;
 }
 
 function CollabEditor({ page, user, theme, canEdit, onReset, ...rest }: CollabProps) {
@@ -1414,6 +1605,8 @@ function BlockContent({
   onCreatePage,
   onPagesChanged,
   structureOpen,
+  onAddSectionComment,
+  onOpenCommentAt,
 }: {
   provider: DworkspaceProvider;
   pageId: string;
@@ -1428,6 +1621,8 @@ function BlockContent({
   onNavigate: (id: string | null) => void;
   onCreatePage: (parentId: string | null, type?: 'doc' | 'collection') => void;
   onPagesChanged: () => void;
+  onAddSectionComment?: (blockId: string, snippet: string) => void;
+  onOpenCommentAt?: (blockId: string) => void;
 }) {
   const editor = useCreateBlockNote({
     schema: dworkspaceSchema,
@@ -1447,6 +1642,101 @@ function BlockContent({
   });
 
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+
+  // Which blocks carry an open (unresolved) comment — so the document itself
+  // can mark them, not just the panel's own list. Independent of whether the
+  // panel is even open: someone reading with it closed should still be able
+  // to see that a paragraph has something to say about it.
+  const [commentedBlocks, setCommentedBlocks] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      api
+        .listComments(pageId)
+        .then((list) => {
+          if (!alive) return;
+          const ids = new Set(list.filter((c) => !c.resolvedAt && c.blockId).map((c) => c.blockId));
+          setCommentedBlocks(ids);
+        })
+        .catch(() => {});
+    load();
+    // Fired by CommentsPanel whenever it adds, resolves or deletes a comment —
+    // the one signal that this set might now be stale.
+    window.addEventListener(COMMENTS_CHANGED, load);
+    return () => {
+      alive = false;
+      window.removeEventListener(COMMENTS_CHANGED, load);
+    };
+  }, [pageId]);
+
+  // Where to draw each commented block's marker — computed from the live DOM
+  // rather than written into it. An earlier version set a data attribute
+  // directly on BlockNote's own block element; that lost a straight fight
+  // with ProseMirror, which rebuilds a node's DOM attributes from its own
+  // model on view updates that are not content changes at all (a remote
+  // collaborator's cursor merely passing through the block was enough) —
+  // the attribute was gone again within milliseconds, often before it ever
+  // painted. Reading the block's position is safe; writing into that tree is
+  // not, so the marker itself is rendered by React in a separate overlay
+  // (see .comment-marker-layer) positioned from these coordinates instead.
+  const markerAnchorRef = useRef<HTMLDivElement>(null);
+  const [markerPositions, setMarkerPositions] = useState<
+    { id: string; top: number; left: number; width: number; height: number }[]
+  >([]);
+  useEffect(() => {
+    const anchor = markerAnchorRef.current;
+    if (!anchor) return;
+    // editor.domElement is read FRESH on every call rather than captured
+    // once — on a long or actively-synced document, BlockNote can replace
+    // its own root/internal subtree wholesale (not just one block's node),
+    // and a closed-over reference to the OLD root would go on measuring a
+    // detached tree forever, silently frozen at whatever position the page
+    // happened to have at the one moment this effect first ran.
+    const recompute = () => {
+      const root = editor.domElement;
+      if (!root) return;
+      const anchorRect = anchor.getBoundingClientRect();
+      const next: { id: string; top: number; left: number; width: number; height: number }[] = [];
+      commentedBlocks.forEach((id) => {
+        const el = root.querySelector(`[data-id="${id}"]`);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        next.push({
+          id,
+          top: r.top - anchorRect.top,
+          left: r.left - anchorRect.left,
+          width: r.width,
+          height: r.height,
+        });
+      });
+      setMarkerPositions(next);
+    };
+    recompute();
+    let raf = 0;
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(recompute);
+    };
+    // Watching document.body rather than editor.domElement, for the same
+    // reason: the node we would have observed is exactly the one BlockNote
+    // might discard. A body-level observer keeps working regardless of what
+    // gets replaced underneath it.
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true });
+    const unsub = editor.onChange?.(schedule);
+    window.addEventListener('resize', schedule);
+    // Web fonts finishing their swap reflow line-wraps after the first
+    // paint — a real cause of exactly the "highlight misses part of the
+    // text" report, since the rect was measured against the fallback font's
+    // (shorter) wrapped height.
+    document.fonts?.ready.then(schedule).catch(() => {});
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+      window.removeEventListener('resize', schedule);
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [editor, commentedBlocks]);
 
   // Workspace members, for the "@" mention menu. Fetched once per workspace
   // (not per keystroke) and filtered client-side as the user types.
@@ -1825,8 +2115,9 @@ function BlockContent({
       <div className="editor-inner" onClickCapture={onFileClick}>
         {/* The database block renders inside the editor and would otherwise
             not reach the page list, the tag colours or navigation. */}
+        <div className="comment-marker-anchor" ref={markerAnchorRef}>
         <BlockContext.Provider value={{ pagesById, tagColors, onNavigate, onPagesChanged }}>
-        <BlockNoteView editor={editor} theme={theme} editable={canEdit} slashMenu={false}>
+        <BlockNoteView editor={editor} theme={theme} editable={canEdit} slashMenu={false} formattingToolbar={false}>
           <SuggestionMenuController triggerCharacter="/" getItems={getSlashItems} />
           <SuggestionMenuController
             triggerCharacter="@"
@@ -1836,8 +2127,44 @@ function BlockContent({
             triggerCharacter="["
             getItems={getWikiItems}
           />
+          <FormattingToolbarController
+            formattingToolbar={() => <CommentFormattingToolbar onAddSectionComment={onAddSectionComment} />}
+          />
         </BlockNoteView>
         </BlockContext.Provider>
+        {/* Comment markers as a separate, React-owned overlay rather than
+            attributes written onto BlockNote's own DOM nodes — ProseMirror
+            rebuilds a block's attributes from its own model on view updates
+            that are not content changes at all (a remote collaborator's
+            cursor moving through the block is enough), which was silently
+            wiping a directly-written attribute within milliseconds of it
+            being set. Reading positions is safe; writing into that tree is
+            not. */}
+        <div className="comment-marker-layer">
+          {markerPositions.map((m) => (
+            <button
+              key={'hl' + m.id}
+              type="button"
+              className="comment-marker-highlight"
+              style={{ top: m.top, left: m.left, width: m.width, height: m.height }}
+              title={t('This section has a comment')}
+              onClick={() => onOpenCommentAt?.(m.id)}
+            />
+          ))}
+          {markerPositions.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className="comment-marker-dot"
+              style={{ top: m.top }}
+              title={t('This section has a comment')}
+              onClick={() => onOpenCommentAt?.(m.id)}
+            >
+              💬
+            </button>
+          ))}
+        </div>
+        </div>
         {!structureOpen && (
           <Backlinks pageId={provider.pageId} pagesById={pagesById} onNavigate={onNavigate} />
         )}

@@ -373,7 +373,7 @@ var mcpTools = []map[string]any{
 			"properties": map[string]any{
 				"page_id":    map[string]any{"type": "string"},
 				"action":     map[string]any{"type": "string", "description": "list (default) | add | resolve | reopen"},
-				"body":       map[string]any{"type": "string", "description": "add only: the comment text."},
+				"body":       map[string]any{"type": "string", "description": "add only: the comment text. To notify someone, name them as @[Display Name](userId) — get userId from get_workspace's member list; a plain \"@name\" is not a mention and notifies nobody."},
 				"block_id":   map[string]any{"type": "string", "description": "add only: attach the comment to one block instead of the page."},
 				"comment_id": map[string]any{"type": "string", "description": "resolve and reopen only."},
 			},

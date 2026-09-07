@@ -22,6 +22,12 @@ interface Props {
    *  table is not for. The rest is summarised as "+N" and stays one click
    *  away. Same reasoning as the one-line truncation of long text cells. */
   maxChips?: number;
+  /** A relation/backrelation chip jumps to the row it names when this is
+   *  given. Optional: a table cell's chip stays inert (opening a row from
+   *  deep inside a dense grid is a mis-click waiting to happen); the entity
+   *  profile view (RowProperties in Editor.tsx) is where a click is exactly
+   *  what somebody reaching for the chip wants. */
+  onNavigate?: (id: string) => void;
 }
 
 // idList reads a list-shaped value (relation, multiselect). A single id stored
@@ -662,7 +668,7 @@ export function loadRelationOptions(colId: string, force = false): Promise<RelOp
   return relCache.get(colId)!;
 }
 
-function RelationValue({ def, value, onChange, readOnly, compact, maxChips }: Props) {
+function RelationValue({ def, value, onChange, readOnly, compact, maxChips, onNavigate }: Props) {
   const targetId = def.relationCollection;
   const ids = idList(value);
   const [options, setOptions] = useState<RelOption[]>([]);
@@ -727,16 +733,26 @@ function RelationValue({ def, value, onChange, readOnly, compact, maxChips }: Pr
   // through PageIcon like everywhere else. Printed raw, a Lucide or MDI icon
   // arrived as the literal text "lucide:PhoneCall" — visible in the picker on
   // every row whose icon was not an emoji.
+  // A chip only navigates when it actually names something and the caller
+  // opted in (see onNavigate on Props) — a still-loading or unreadable chip
+  // has nowhere useful to go, and a table cell's chip stays inert on purpose.
+  const canOpen = (id: string) => !!onNavigate && !!titleOf(id);
   const chips = (
     <span className="prop-multi">
       {shown.map((id) => (
         <span
           key={id}
           className={
-            'prop-chip relation-chip' + (titleOf(id) ? '' : loaded ? ' is-unknown' : ' is-pending')
+            'prop-chip relation-chip' +
+            (titleOf(id) ? '' : loaded ? ' is-unknown' : ' is-pending') +
+            (canOpen(id) ? ' relation-chip-link' : '')
           }
           title={titleOf(id) || (loaded ? t('This row is not readable from here.') : undefined)}
           style={{ background: '#3b6fb52e', color: '#3b6fb5' }}
+          role={canOpen(id) ? 'button' : undefined}
+          tabIndex={canOpen(id) ? 0 : undefined}
+          onClick={canOpen(id) ? () => onNavigate!(id) : undefined}
+          onKeyDown={canOpen(id) ? (e) => { if (e.key === 'Enter') onNavigate!(id); } : undefined}
         >
           {iconOf(id) && (
             <span className="relation-icon">
@@ -818,6 +834,7 @@ export default function PropertyValue({
   readOnly,
   compact,
   maxChips,
+  onNavigate,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const ro = readOnly || !onChange;
@@ -832,6 +849,7 @@ export default function PropertyValue({
           readOnly={readOnly}
           compact={compact}
           maxChips={maxChips}
+          onNavigate={onNavigate}
         />
       );
     // A backrelation IS a relation to read — same ids, same titles, same
@@ -846,6 +864,7 @@ export default function PropertyValue({
           readOnly
           compact={compact}
           maxChips={maxChips}
+          onNavigate={onNavigate}
         />
       );
     case 'lastActivity': {

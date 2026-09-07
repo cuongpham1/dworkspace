@@ -767,11 +767,29 @@ func (s *Server) reindexPage(id string) error {
 	if err != nil {
 		return err
 	}
+	// Old outgoing targets, read before updateLinks replaces them — the only
+	// way to tell a BRAND NEW link (worth a subscriber notice) from one that
+	// was already there on the last save.
+	var oldTargets []string
+	if tr, err := s.db.Query(`SELECT target_id FROM links WHERE source_id = ?`, id); err == nil {
+		for tr.Next() {
+			var t string
+			if tr.Scan(&t) == nil {
+				oldTargets = append(oldTargets, t)
+			}
+		}
+		tr.Close()
+	}
 	// Keep the outgoing-links index in sync with the current content.
-	s.updateLinks(id, content, trashedAt.Valid)
+	newTargets := s.updateLinks(id, content, trashedAt.Valid)
 	// Same for user mentions — who was named on this page, and does their
 	// notification still stand (see mentions.go).
 	s.updateMentions(id, content, trashedAt.Valid)
+	// Whoever follows one of the targets this page just started linking to
+	// gets a notice — see notifySubscribers in subscriptions.go.
+	if !trashedAt.Valid {
+		s.notifySubscribers(id, oldTargets, newTargets)
+	}
 	if trashedAt.Valid {
 		// In the trash: clear the passages, or the page keeps turning up in
 		// the passage-based search.

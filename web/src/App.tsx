@@ -95,6 +95,7 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [pages, setPages] = useState<PageMeta[] | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [subscriptions, setSubscriptions] = useState<string[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   // The last opened workspace is remembered. Without it every reload dropped
   // you back into the first one — anybody who mostly works in a second had to
@@ -163,6 +164,9 @@ export default function App() {
   }, [openTabs]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [indexOpen, setIndexOpen] = useState(false);
+  // Set when the library was opened via "See related graph" on a page —
+  // lands on the graph tab scoped to that page instead of the whole library.
+  const [graphFocus, setGraphFocus] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   // Desktop-only: collapse the sidebar entirely (mobile uses the drawer). The
   // editor's hamburger reopens it. Persisted so it stays collapsed across loads.
@@ -244,6 +248,14 @@ export default function App() {
     }
   }, []);
 
+  const loadSubscriptions = useCallback(async () => {
+    try {
+      setSubscriptions(await api.listSubscriptions());
+    } catch {
+      /* keep current subscriptions on transient failure */
+    }
+  }, []);
+
   // Pages reload on SSE events; favorites are per-user and reloaded only on
   // login/mount, so a page-change broadcast can't clobber an in-flight
   // optimistic favorite toggle.
@@ -302,8 +314,8 @@ export default function App() {
   );
 
   const loadAll = useCallback(async () => {
-    await Promise.all([loadPages(), loadFavorites(), loadWorkspaces()]);
-  }, [loadPages, loadFavorites, loadWorkspaces]);
+    await Promise.all([loadPages(), loadFavorites(), loadSubscriptions(), loadWorkspaces()]);
+  }, [loadPages, loadFavorites, loadSubscriptions, loadWorkspaces]);
 
   const toggleFavorite = useCallback(
     async (id: string) => {
@@ -319,6 +331,22 @@ export default function App() {
       }
     },
     [favorites, loadFavorites],
+  );
+
+  const toggleSubscribe = useCallback(
+    async (id: string) => {
+      const willAdd = !subscriptions.includes(id);
+      setSubscriptions((prev) =>
+        willAdd ? [...prev, id] : prev.filter((f) => f !== id),
+      );
+      try {
+        if (willAdd) await api.subscribe(id);
+        else await api.unsubscribe(id);
+      } catch {
+        void loadSubscriptions(); // reconcile on failure
+      }
+    },
+    [subscriptions, loadSubscriptions],
   );
 
   useEffect(() => {
@@ -1016,9 +1044,15 @@ export default function App() {
             currentWs={currentWs}
             onNavigate={(id) => {
               setIndexOpen(false);
+              setGraphFocus(null);
               navigate(id);
             }}
-            onClose={() => setIndexOpen(false)}
+            onClose={() => {
+              setIndexOpen(false);
+              setGraphFocus(null);
+            }}
+            initialMode={graphFocus ? 'graph' : undefined}
+            focusId={graphFocus ?? undefined}
           />
         ) : currentId ? (
           <>
@@ -1048,6 +1082,12 @@ export default function App() {
               onTrash={trashPage}
               onPagesChanged={loadPages}
               initialProposalId={proposalIdFromLocation() ?? undefined}
+              onOpenGraph={(id) => {
+                setGraphFocus(id);
+                setIndexOpen(true);
+              }}
+              subscribed={subscriptions.includes(currentId)}
+              onToggleSubscribe={toggleSubscribe}
             />
           </>
         ) : workspaces.length === 0 ? (

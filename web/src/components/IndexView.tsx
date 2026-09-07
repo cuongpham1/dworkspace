@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { toast } from '../toast';
-import type { PageMeta, Workspace } from '../types';
+import type { GraphEdge, PageMeta, Workspace } from '../types';
 import { PageIcon } from '../pageIcon';
 import { compare, formatMoment } from '../format';
 import { plural, t } from '../i18n';
@@ -10,7 +10,7 @@ import { Clock, FileText, Library, Lock, Share2, Star, Table2, Users, Workflow }
 import GraphView from './GraphView';
 
 type SortKey = 'title' | 'in' | 'out' | 'updated';
-type Mode = 'recent' | 'favorites' | 'shared' | 'private' | 'all' | 'tree' | 'graph';
+export type Mode = 'recent' | 'favorites' | 'shared' | 'private' | 'all' | 'tree' | 'graph';
 
 // The library: every page of this instance (documents + databases, database rows
 // excluded), the way a shelf is browsed rather than a list is read — by what was
@@ -58,6 +58,11 @@ export default function IndexView({
   currentWs,
   onNavigate,
   onClose,
+  // Set when opened via "See related graph" from a page (see Editor.tsx):
+  // lands directly on the graph tab, scoped to that page's neighborhood
+  // instead of the whole workspace.
+  initialMode,
+  focusId,
 }: {
   pages: PageMeta[];
   favorites: string[];
@@ -65,14 +70,16 @@ export default function IndexView({
   currentWs: string;
   onNavigate: (id: string) => void;
   onClose: () => void;
+  initialMode?: Mode;
+  focusId?: string;
 }) {
-  const [edges, setEdges] = useState<{ source: string; target: string }[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SortKey>('title');
   const recents = useMemo(recentIDs, []);
   // "Recently used" is the right shelf to land on — except on a fresh browser,
   // where it is empty and the library would greet you with nothing at all.
-  const [mode, setMode] = useState<Mode>(recents.length ? 'recent' : 'all');
+  const [mode, setMode] = useState<Mode>(initialMode ?? (recents.length ? 'recent' : 'all'));
   const [people, setPeople] = useState<Map<string, string>>(new Map());
   // Which workspace this shelf shows. It opens on the one you are working in,
   // because that is what "my pages" means to somebody who has seven of them —
@@ -107,7 +114,11 @@ export default function IndexView({
   const { outCount, inCount } = useMemo(() => {
     const out = new Map<string, number>();
     const inc = new Map<string, number>();
+    // These columns are titled "@-links" / "backlinks" — a database relation
+    // is a real graph edge (see GraphView) but not a link, so it stays out of
+    // a count whose header makes a narrower promise.
     for (const e of edges) {
+      if (e.kind !== 'link') continue;
       out.set(e.source, (out.get(e.source) ?? 0) + 1);
       inc.set(e.target, (inc.get(e.target) ?? 0) + 1);
     }
@@ -308,7 +319,7 @@ export default function IndexView({
       </div>
 
       {mode === 'graph' ? (
-        <GraphView pages={live} edges={edges} onNavigate={onNavigate} />
+        <GraphView pages={live} edges={edges} onNavigate={onNavigate} focusId={focusId} />
       ) : mode !== 'tree' ? (
         <div className="table-wrap">
           <table className="db-table index-table">

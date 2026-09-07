@@ -259,8 +259,15 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	m.HandleFunc("POST /api/favorites/{id}", s.auth(s.handleAddFavorite))
 	m.HandleFunc("DELETE /api/favorites/{id}", s.auth(s.handleRemoveFavorite))
 
-	// Being named with "@" on a page. Always scoped to the caller — there is no
-	// route to read anybody else's (see mentions.go).
+	// Following a page — told when something new links to it (see
+	// subscriptions.go). Always scoped to the caller, same as favorites.
+	m.HandleFunc("GET /api/subscriptions", s.auth(s.handleListSubscriptions))
+	m.HandleFunc("POST /api/pages/{id}/subscribe", s.auth(s.handleSubscribe))
+	m.HandleFunc("DELETE /api/pages/{id}/subscribe", s.auth(s.handleUnsubscribe))
+
+	// Being named with "@" on a page, or told about a new link to a page you
+	// follow. Always scoped to the caller — there is no route to read anybody
+	// else's (see mentions.go / subscriptions.go).
 	m.HandleFunc("GET /api/notifications", s.auth(s.handleNotifications))
 	m.HandleFunc("POST /api/notifications/read", s.auth(s.handleNotificationsRead))
 
