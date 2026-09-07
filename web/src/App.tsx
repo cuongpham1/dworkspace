@@ -6,6 +6,7 @@ import type { Me, PageMeta, User, Workspace } from './types';
 import Sidebar from './components/Sidebar';
 import Editor from './components/Editor';
 import ProposalReviewModal from './components/ProposalReviewModal';
+import SkillsApp, { skillsRouteFromLocation, type SkillsRoute } from './components/SkillsApp';
 import TabBar from './components/TabBar';
 import SearchModal from './components/SearchModal';
 import IndexView from './components/IndexView';
@@ -126,6 +127,10 @@ export default function App() {
   }, []);
   // Ref mirror so the []-deps ⌥N handler always calls the current createPage.
   const createPageRef = useRef<((parentId: string | null) => Promise<void>) | null>(null);
+  // The Skills section owns everything under /skills (see SkillsApp). Held as
+  // state rather than read during render so that back/forward moves through it,
+  // like every other route here.
+  const [skillsRoute, setSkillsRoute] = useState<SkillsRoute | null>(skillsRouteFromLocation);
   const [currentId, setCurrentId] = useState<string | null>(pageIdFromLocation());
   // Open document tabs (Obsidian-style): an ordered list of page ids; the active
   // one is `currentId`. Seeded from the last session and the URL.
@@ -346,6 +351,7 @@ export default function App() {
     // (set by pushTabHistory). Falls back to the URL id for entries with no
     // snapshot (e.g. the very first load), reopening a tab only then.
     const onPop = (e: PopStateEvent) => {
+      setSkillsRoute(skillsRouteFromLocation());
       const st = e.state as { tabs?: string[]; active?: string | null } | null;
       if (st && Array.isArray(st.tabs)) {
         setOpenTabs(st.tabs);
@@ -658,6 +664,9 @@ export default function App() {
     // the agent's sign-in vanished into the app before anyone could answer it.
     if (window.location.pathname === '/oauth/consent') return;
     if (reviewProposalIdFromLocation()) return;
+    // Nor the Skills section, for the same reason: it is a route of its own and
+    // this effect would replace it with the last document you had open.
+    if (skillsRouteFromLocation()) return;
     if (currentId) {
       const cur = pages.find((p) => p.id === currentId);
       if (!cur || !cur.trashed) return; // in-tree-and-live, OR a row not in the tree → keep
@@ -981,7 +990,13 @@ export default function App() {
         />
       )}
       <main className="main">
-        {reviewProposalId ? (
+        {skillsRoute ? (
+          <SkillsApp
+            route={skillsRoute}
+            workspaceId={currentWs}
+            onLeave={() => setSkillsRoute(skillsRouteFromLocation())}
+          />
+        ) : reviewProposalId ? (
           <ProposalReviewModal
             initialProposalId={reviewProposalId}
             canonicalContent={[]}

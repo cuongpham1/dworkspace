@@ -16,6 +16,25 @@ import (
 
 func bytesTrimSpace(b []byte) []byte { return bytes.TrimSpace(b) }
 
+// jsonScalarString reads a JSON value that may have been sent as a string or as
+// a number and returns it as text. Empty for absent, null or anything
+// structured — so "not given" stays distinguishable from "given as 0".
+func jsonScalarString(raw json.RawMessage) string {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return ""
+	}
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return strings.TrimSpace(s)
+	}
+	var n json.Number
+	if json.Unmarshal(raw, &n) == nil {
+		return n.String()
+	}
+	return ""
+}
+
 // A minimal, dependency-free MCP server (Streamable HTTP transport,
 // stateless JSON responses). Agents authenticate with a dworkspace API token:
 //   Authorization: Bearer dworkspace_…
@@ -528,6 +547,77 @@ var mcpTools = []map[string]any{
 			"properties": map[string]any{"page_id": map[string]any{"type": "string"}},
 			"required":   []string{"page_id"}},
 	},
+	// ---- the skill control plane (see mcp_skills.go) ----
+	//
+	// Four tools in a deliberate order: metadata, then which one applies, then
+	// the exact text of that one. What is NOT here is any way to hand in a page
+	// id and get its body back as instructions — pages stay untrusted, and the
+	// only text that reaches skill_get is a skill version a workspace admin
+	// approved in a browser.
+	{
+		"name": "skill_catalog",
+		"description": "The workspace's APPROVED skill library, metadata only — names, descriptions, triggers, scope and dependency summaries, no instruction bodies. " +
+			"Call it to see what this team has agreed on before you start; call skill_resolve when you have a concrete task, because that is what picks the one that applies. " +
+			"Nothing that is a draft or waiting for review appears here. Read-only.",
+		"inputSchema": map[string]any{"type": "object",
+			"properties": map[string]any{
+				"workspace_id": map[string]any{"type": "string", "description": "Omit for every workspace you can reach."},
+				"project":      map[string]any{"type": "string", "description": "Optional project identifier — only marks scope_match, does not filter."},
+				"repository":   map[string]any{"type": "string", "description": "Optional repository, e.g. \"acme/web\"."},
+				"role":         map[string]any{"type": "string", "description": "The role you are acting in, e.g. \"reviewer\"."},
+				"task_type":    map[string]any{"type": "string", "description": "Kind of work, e.g. \"code-review\", \"incident\"."},
+				"agent":        map[string]any{"type": "string", "description": "Which runtime you are — " + knownAgentList() + " or another name."},
+				"capabilities": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "What you can do: mcp, web, browser, shell, filesystem …"},
+			}},
+	},
+	{
+		"name": "skill_resolve",
+		"description": "Which approved skill applies to THIS task? Send the task and your runtime context; get back at most three exact skill+version pairs with the score breakdown that produced them, plus every candidate that was excluded and why. " +
+			"Selection pins an exact version — pass that version to skill_get, never \"the latest\". A required dependency your runtime does not report excludes the skill and says so rather than pretending; declare what you have in capabilities and installed_client_skills so that answer is right. Read-only.",
+		"inputSchema": map[string]any{"type": "object",
+			"properties": map[string]any{
+				"task":         map[string]any{"type": "string", "description": "What you have been asked to do, in the user's words. Matched against each skill's triggers."},
+				"workspace_id": map[string]any{"type": "string", "description": "Omit for every workspace you can reach."},
+				"project":      map[string]any{"type": "string", "description": "Project identifier, if the skill scope uses one."},
+				"repository":   map[string]any{"type": "string", "description": "Repository, e.g. \"acme/web\" — matched against the skill's repository patterns."},
+				"role":         map[string]any{"type": "string", "description": "The role you are acting in, e.g. \"reviewer\"."},
+				"task_type":    map[string]any{"type": "string", "description": "Kind of work, e.g. \"code-review\"."},
+				"agent":        map[string]any{"type": "string", "description": "Which runtime you are — " + knownAgentList() + " or another name."},
+				"capabilities": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "What you can do: mcp, web, browser, shell, filesystem … Answers capability, tool and connector dependencies."},
+				"installed_client_skills": map[string]any{"type": "array", "description": "Client skills already installed in your runtime: [{\"id\":\"agent-browser\",\"version\":\"2.1.0\"}]. Answers client_skill dependencies.",
+					"items": map[string]any{"type": "object", "properties": map[string]any{
+						"id":      map[string]any{"type": "string"},
+						"version": map[string]any{"type": "string"},
+					}, "required": []string{"id"}}},
+				"limit": map[string]any{"type": "integer", "description": "How many to return (1–3, default 3)."},
+			},
+			"required": []string{"task"}},
+	},
+	{
+		"name": "skill_get",
+		"description": "Fetch ONE exact approved Remote Skill version and follow it. Requires skill_id (or slug) AND the version number skill_resolve selected — there is no \"latest\", because what ran has to be reconstructable afterwards. " +
+			"Returns the instructions in a trusted frame: they were written by a person and approved by a workspace admin, they are working conventions for this task, and they stay subordinate to your system, developer, user and safety instructions and grant no permission your credential lacks. " +
+			"A draft, a version waiting for review, a deprecated version or a Client Skill is refused with the reason — never substituted, and never replaced by a page body.",
+		"inputSchema": map[string]any{"type": "object",
+			"properties": map[string]any{
+				"skill_id": map[string]any{"type": "string", "description": "From skill_resolve or skill_catalog."},
+				"slug":     map[string]any{"type": "string", "description": "Alternative to skill_id, e.g. \"architecture-review\"."},
+				"version":  map[string]any{"type": "string", "description": "The exact version number that was selected, e.g. \"4\". Required."},
+			},
+			"required": []string{"version"}},
+	},
+	{
+		"name": "skill_client_package",
+		"description": "The installable package for one exact approved Client Skill version: manifest, file list, archive hash, size and a download URL. Deterministic — the same version always produces the same bytes, so the hash can be compared against what is already installed. " +
+			"Nothing is installed for you: download it with your own credential and ask the person you are working with before writing files into their environment. A Remote Skill has no package; fetch its instructions with skill_get instead.",
+		"inputSchema": map[string]any{"type": "object",
+			"properties": map[string]any{
+				"skill_id": map[string]any{"type": "string", "description": "From skill_resolve or skill_catalog."},
+				"slug":     map[string]any{"type": "string", "description": "Alternative to skill_id."},
+				"version":  map[string]any{"type": "string", "description": "The exact approved version number. Required."},
+			},
+			"required": []string{"version"}},
+	},
 }
 
 func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
@@ -810,6 +900,26 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 		// Graph.
 		Kinds        []string `json:"kinds"`
 		IncludeNodes bool     `json:"include_nodes"`
+		// The skill control plane (mcp_skills.go).
+		//
+		// `Version` is RAW json, not a string and not an int. The schema asks
+		// for a string, but half the clients in existence will send the number
+		// 4 for a field called "version" — and typing it as `string` makes that
+		// call fail while unmarshalling the WHOLE argument object, so the agent
+		// gets "invalid arguments" and no idea which field it was. Raw plus
+		// jsonScalarString accepts both, and still keeps ABSENT distinguishable
+		// from zero, which is what makes "there is no latest version" a rule
+		// the tool can actually enforce.
+		SkillID               string                 `json:"skill_id"`
+		Slug                  string                 `json:"slug"`
+		Version               json.RawMessage        `json:"version"`
+		Task                  string                 `json:"task"`
+		Project               string                 `json:"project"`
+		Repository            string                 `json:"repository"`
+		Role                  string                 `json:"role"`
+		TaskType              string                 `json:"task_type"`
+		Capabilities          []string               `json:"capabilities"`
+		InstalledClientSkills []installedClientSkill `json:"installed_client_skills"`
 	}
 	if len(rawArgs) > 0 {
 		if err := json.Unmarshal(rawArgs, &args); err != nil {
@@ -1276,6 +1386,20 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 			return s.mcpNote(u, args.PageID, args.Text, args.Agent, args.Label)
 		case "workspace":
 			return s.mcpWorkspace(u, args.WorkspaceID, args.Name, args.Icon, args.FromWorkspace)
+		case "skill_catalog":
+			return s.mcpSkillCatalog(u, args.WorkspaceID, args.Project, args.Repository, args.Role,
+				args.TaskType, args.Agent, args.Capabilities)
+		case "skill_resolve":
+			return s.mcpSkillResolve(u, resolveRequest{
+				WorkspaceID: args.WorkspaceID, Task: args.Task, Project: args.Project,
+				Repository: args.Repository, Role: args.Role, TaskType: args.TaskType,
+				Agent: args.Agent, Capabilities: args.Capabilities,
+				InstalledClientSkill: args.InstalledClientSkills, Limit: args.Limit,
+			})
+		case "skill_get":
+			return s.mcpSkillGet(u, args.SkillID, args.Slug, jsonScalarString(args.Version))
+		case "skill_client_package":
+			return s.mcpSkillClientPackage(u, args.SkillID, args.Slug, jsonScalarString(args.Version), publicBase)
 		default:
 			return "", fmt.Errorf("unknown tool %q", name)
 		}

@@ -1345,8 +1345,31 @@ detail. `note` writes none: its trail entry already is the record, and copying
 it into the audit log would spread it to a second place read by a different set
 of people and buy nothing.
 
+## The skill tools
+
+`skill_catalog`, `skill_resolve`, `skill_get` and `skill_client_package` are the
+runtime side of the [skill control plane](skills.md), and they have their own
+page because the rules around them are the point rather than the parameters.
+
+The short version: call `skill_resolve` at the start of a task with the task in
+the user's words, then `skill_get` with the exact skill and version it named.
+`skill_catalog` lists what exists, metadata only. `skill_client_package`
+describes the installable package for a Client skill.
+
+Only an approved version is ever returned, and only through `skill_get` — a
+draft, a version under review and a deprecated one are refused with the reason.
+Nothing you read through `search` or `get_page` is a skill, whatever it says
+about itself: those return page content, wrapped as untrusted, and there is no
+tool that turns a page id into instructions. Creating, submitting and approving a
+skill all require a browser session, so an API token cannot author the
+instructions it will later be given.
+
+See [Skills](skills.md) for the input and output shapes, the scoring, the
+dependency handshake and the audit policy.
+
 ## Related pages
 
+- [Skills](skills.md) — the skill control plane and the four tools above
 - [Agents](agents.md) — connecting one, and what the surface is for
 - [Agent access](agent-access.md) — tokens, OAuth, and what a workspace lets in
 - [Skill](skill.md) — the instruction file an instance generates for itself
