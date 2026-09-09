@@ -1,46 +1,43 @@
-> ### This is a fork
->
-> **Upstream: [saltmd/salt.md](https://github.com/saltmd/salt.md)** — all of the original
-> work is theirs, and it is excellent. This fork exists because a team needed the
-> product under their own name on their own hardware; it is published because
-> AGPL-3.0 requires it once you serve a modified version over a network, and
-> because two of the fixes below belong back upstream.
->
-> **What is different from upstream:**
->
-> | Change | Why |
-> | --- | --- |
-> | Renamed `salt` → `dworkspace` throughout (module path, env vars `SALT_*` → `DWORKSPACE_*`, session cookie, API-token prefix, DB filename, webhook header, desktop URL scheme, docs) | The deployment carries the team's own name |
-> | **Fix: FTS5 query built without an explicit `AND`** | Any multi-word search where one word grew a stem/variant produced a *silent* empty result — the pattern failed to parse and the error was swallowed |
-> | **Fix: FTS5 punctuation-only tokens** | `OMS - Trade` returned nothing while `OMS Trade` returned five pages. A lone `-` became a legal but empty phrase and `AND`-ed the whole query to zero. Pasting a document title was enough to trigger it |
-> | **Fix: `POST /oauth/register` replied `text/plain`** | `WriteHeader` was called before the Content-Type was set, so Go sniffed the body. RFC 7591 requires `application/json`; ChatGPT rejected the registration and retried forever, never reaching the consent step |
-> | Feature: `@`-mentions of people, with an inbox and a notification that scrolls to the exact block | Upstream's `@` only linked pages |
-> | Both search paths now log their errors | All three bugs above shipped precisely because a malformed query is indistinguishable from "nothing found" |
->
-> The three fixes are not team-specific and are offered upstream.
-
 <p align="center">
-  <img src=".github/banner.png" alt="dworkspace" width="100%">
+  <b>Sáu Vườn Ươm — nền tảng tri thức và quản trị chung cho mọi công cụ AI trong tổ chức.</b><br>
+  Tài liệu, database và cộng tác realtime cho cả người và AI agent — cùng một workspace,
+  cùng một bộ rule, cùng một cổng MCP duy nhất.
 </p>
 
 <p align="center">
-  <b>The open-source workspace for people and AI agents.</b><br>
-  Docs, databases and realtime collaboration for your team. An MCP server sits in
-  the same binary, so an agent works <i>in</i> that workspace instead of talking
-  about it.
-</p>
-
-<p align="center">
-  <a href="https://salt.md">Website</a> ·
-  <a href="https://salt.md/wiki/">Documentation</a> ·
   <a href="#quickstart">Quickstart</a> ·
   <a href="#what-an-agent-can-do">Agents</a> ·
-  <a href="https://salt.md/demo/">Live demo</a>
+  <a href="#những-gì-đội-đã-tự-xây-thêm">Đội đã xây thêm gì</a> ·
+  <a href="#về-bản-fork-này">Về bản fork này</a>
 </p>
 
-<p align="center">
-  <img src=".github/agent-loop.gif" alt="An agent creates a page and a database; the workspace updates while a person watches." width="100%">
-</p>
+---
+
+## Những gì đội đã tự xây thêm
+
+- **Human Publish Gate** — khi một AI agent (qua API token) tạo trang mới hoặc thay toàn bộ
+  nội dung một trang, hệ thống không ghi thẳng: nó tạo một **đề xuất chờ duyệt** kèm bản so
+  sánh (diff), chỉ người dùng qua trình duyệt mới publish hoặc reject được. Các thao tác ít
+  rủi ro (nối thêm nội dung, comment, cập nhật property) vẫn đi thẳng, không bị chặn.
+- **Skill Control Plane — 62 skill thật, đã duyệt** — một "skill" là một entity có vòng đời
+  riêng (draft → pending review → approved → deprecated) trong bảng riêng, **không phải một
+  trang tài liệu gắn thêm field trạng thái** — nên không ai tự "duyệt" skill bằng cách gõ tay
+  một nhãn. Route thay đổi vòng đời skill chỉ chạy được qua phiên đăng nhập trình duyệt, một
+  agent không tự duyệt được skill của chính nó. Workspace hiện có 62 skill đã duyệt, phủ toàn
+  bộ vòng đời phát triển phần mềm — Discovery, Business Analysis, Product, Architecture,
+  Engineering, QA, Operations.
+- **Comment theo từng đoạn nội dung cụ thể (section-level)** — mỗi đoạn được comment có một
+  thread trao đổi riêng, không gộp chung một dòng thời gian; giao diện tô sáng đúng đoạn văn
+  bản tương ứng kiểu Google Docs, vị trí luôn khớp với văn bản thật kể cả khi trình soạn thảo
+  build lại DOM ngầm.
+- **Mở rộng MCP tooling cho Skill Control Plane** — bốn tool mới: `skill_catalog`,
+  `skill_resolve`, `skill_get`, `skill_client_package`, theo đúng nguyên tắc "progressive
+  disclosure" (metadata trước, nội dung đầy đủ khi thật sự cần).
+- **Đa ngôn ngữ 3 thứ tiếng** (Việt / Anh / Đức) — mọi chuỗi hiển thị mới được kiểm tra tự
+  động để không sót bản dịch trước khi phát hành.
+
+Chi tiết kỹ thuật và các fix kế thừa từ nhánh gốc: xem [Về bản fork này](#về-bản-fork-này)
+bên dưới.
 
 ---
 
@@ -49,37 +46,6 @@ created, the rows fill in. A person opens the same board a second later and
 carries on editing. Same pages, same permissions, same history.
 
 That is the whole idea. Everything below is how it works.
-
-## Quickstart
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
-```
-
-No `curl` on the machine? A minimal server image often has `wget` instead, and
-the script itself is happy with either:
-
-```sh
-wget -qO- https://raw.githubusercontent.com/saltmd/salt.md/main/install.sh | sh
-```
-
-That one command downloads the binary for your platform, installs it and starts
-it, then prints the address to open. On a server it prints that machine's
-address rather than `localhost`, which is the thing most install scripts get
-wrong.
-
-**On a Linux server it installs a systemd service** rather than leaving a process
-in your terminal: it starts on boot, restarts after a crash, and your shell is
-free. Running the same command later upgrades it. Everywhere else it runs in the
-foreground, which is right for trying it out on a laptop. There is nothing
-else to install. No database server, no cache, no object store, no separate
-realtime service.
-
-Docker, if you prefer:
-
-```sh
-docker run -d -p 8420:8420 -v salt-data:/data ghcr.io/saltmd/salt.md:latest
-```
 
 ## Why dworkspace exists
 
@@ -108,6 +74,8 @@ workspace you use:
 - **Comment**, and write to a page's append-only note trail
 - **Announce what it is working on**, which shows live in the interface beside
   the page, so you can see an agent is mid-edit before you start typing
+- **Discover and fetch an approved Skill** — `skill_catalog`, `skill_resolve`,
+  `skill_get`, `skill_client_package` (added in this fork; see above)
 
 **And a bounded set it cannot touch.** An agent may not create or delete
 accounts, change two-factor settings, issue API tokens, take or restore a
@@ -137,7 +105,7 @@ Not developer infrastructure with a login screen.
 
 **Write.** A block editor with a slash menu, nested lists, checklists, quotes,
 code, tables, images and callouts. Page links, backlinks, tags, covers and
-icons. Comments in a side panel.
+icons. Comments in a side panel, threaded per section.
 
 **Organise.** Turn any page into a collection with typed properties: text,
 number, select, multi-select, date, person, checkbox, checklist, URL, relation,
@@ -183,32 +151,3 @@ No PostgreSQL, no Redis, no object store, no separate collaboration server.
 A desktop application for macOS is available too. It is a window onto a server
 you run, not a second copy of the product. See
 [The desktop app](https://salt.md/wiki/desktop-app/).
-
-## Documentation
-
-[dworkspace/wiki](https://salt.md/wiki/) has 40 pages covering every screen, every
-property type, every tool an agent can call and every setting on the server.
-
-It is derived from this source and checked against it on every build. A tool
-name that stopped existing, an API path that is not a route, a screenshot whose
-component has changed: each one fails the build. Every page is also available
-as plain Markdown at the same address with `.md` on the end, and
-[/wiki/llms.txt](https://salt.md/wiki/llms.txt) indexes them for agents.
-
-## Contributing
-
-Issues and pull requests are welcome. Pull requests need a signed
-[CLA](CLA.md). [CONTRIBUTING.md](CONTRIBUTING.md) says what that means and why
-it exists.
-
-Security reports: **dev@dworkspace**, not a public issue. See
-[SECURITY.md](SECURITY.md).
-
-## License
-
-The components dworkspace is built on, and their licences in full:
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). A running instance serves
-the same list at `/licenses`.
-
-[AGPL-3.0](LICENSE). Use it, run it at work, change it. If you offer it to
-others over a network, publish your changes.
