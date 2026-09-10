@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Check, FileText, GitCompare, Plus, Save, Search, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, FileText, Plus, Save, Search, X } from 'lucide-react';
 import { api } from '../api';
 import { formatMoment } from '../format';
 import { t } from '../i18n';
@@ -8,7 +8,6 @@ import { toast } from '../toast';
 import type { PageChangeProposal } from '../types';
 import Portal from './Portal';
 
-type ReviewTab = 'edit' | 'preview' | 'diff';
 type UnknownRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null;
@@ -50,6 +49,104 @@ function statusLabel(status: PageChangeProposal['status'] | 'added' | 'removed' 
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
+// Lets the page header's pending-changes count refresh itself without a full
+// reload — the same trick CommentsPanel's COMMENTS_CHANGED plays for the
+// comment badge: the header owns the count, this component only nudges it.
+export const PROPOSALS_CHANGED = 'dworkspace:proposals-changed';
+
+const SIDEBAR_WIDTH_KEY = 'dworkspace-proposal-sidebar-width';
+const SIDEBAR_WIDTH_MIN = 200;
+const SIDEBAR_WIDTH_MAX = 440;
+const SIDEBAR_WIDTH_DEFAULT = 264;
+
+function loadSidebarWidth(): number {
+  try {
+    const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    if (Number.isFinite(stored) && stored >= SIDEBAR_WIDTH_MIN && stored <= SIDEBAR_WIDTH_MAX) return stored;
+  } catch {
+    /* private mode, quota — the default is fine */
+  }
+  return SIDEBAR_WIDTH_DEFAULT;
+}
+
+// Generic LCS-based diff: works on any array (blocks, or word tokens) given an
+// equality test. Reused for both the block-level alignment and the word-level
+// diff inside one modified block — same algorithm, two granularities.
+type DiffOp<T> = { op: 'same' | 'del' | 'add'; item: T };
+function lcsDiff<T>(a: T[], b: T[], eq: (x: T, y: T) => boolean): DiffOp<T>[] {
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = eq(a[i], b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const ops: DiffOp<T>[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < n && j < m) {
+    if (eq(a[i], b[j])) { ops.push({ op: 'same', item: b[j] }); i += 1; j += 1; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ op: 'del', item: a[i] }); i += 1; }
+    else { ops.push({ op: 'add', item: b[j] }); j += 1; }
+  }
+  while (i < n) { ops.push({ op: 'del', item: a[i] }); i += 1; }
+  while (j < m) { ops.push({ op: 'add', item: b[j] }); j += 1; }
+  return ops;
+}
+
+// Splits on whitespace while keeping the whitespace itself as tokens, so the
+// diffed pieces rejoin into exactly the original text with no lost spacing.
+const wordTokens = (text: string): string[] => text.split(/(\s+)/).filter((token) => token.length > 0);
+
+function renderWordDiff(oldText: string, newText: string) {
+  const ops = lcsDiff(wordTokens(oldText), wordTokens(newText), (a, b) => a === b);
+  return ops.map((op, index) => {
+    if (op.op === 'same') return <span key={index}>{op.item}</span>;
+    if (op.op === 'del') return <del key={index} className="diff-del">{op.item}</del>;
+    return <ins key={index} className="diff-ins">{op.item}</ins>;
+  });
+}
+
+type BlockRef = { key: string; text: string; type: string };
+type DiffSegment =
+  | { kind: 'same'; block: BlockRef }
+  | { kind: 'modified'; before: BlockRef; after: BlockRef }
+  | { kind: 'added'; block: BlockRef }
+  | { kind: 'removed'; block: BlockRef };
+
+// Aligns two block lists by CONTENT (type+text), not by block id — a full
+// `write_content(mode=replace)` regenerates every block id from scratch, so id
+// matching would show the entire document as removed+added even when only one
+// sentence changed. Within one contiguous run of removals+insertions, blocks of
+// the same type are paired as "modified" so their text gets a word-level diff
+// instead of two opaque red/green blobs.
+function alignBlocks(before: BlockRef[], after: BlockRef[]): DiffSegment[] {
+  const ops = lcsDiff(before, after, (a, b) => a.type === b.type && a.text === b.text);
+  const segments: DiffSegment[] = [];
+  let i = 0;
+  while (i < ops.length) {
+    const op = ops[i];
+    if (op.op === 'same') { segments.push({ kind: 'same', block: op.item }); i += 1; continue; }
+    const dels: BlockRef[] = [];
+    const adds: BlockRef[] = [];
+    while (i < ops.length && ops[i].op === 'del') { dels.push(ops[i].item); i += 1; }
+    while (i < ops.length && ops[i].op === 'add') { adds.push(ops[i].item); i += 1; }
+    const usedAdds = new Set<number>();
+    for (const del of dels) {
+      const matchIndex = adds.findIndex((candidate, ai) => !usedAdds.has(ai) && candidate.type === del.type);
+      if (matchIndex >= 0) {
+        usedAdds.add(matchIndex);
+        segments.push({ kind: 'modified', before: del, after: adds[matchIndex] });
+      } else {
+        segments.push({ kind: 'removed', block: del });
+      }
+    }
+    adds.forEach((add, ai) => { if (!usedAdds.has(ai)) segments.push({ kind: 'added', block: add }); });
+  }
+  return segments;
+}
+
 function Preview({ proposal }: { proposal: PageChangeProposal }) {
   return <div className="proposal-preview" aria-label={t('Proposed document preview')}>
     {proposal.proposedTitle && <h3 className="proposal-preview-title">{proposal.proposedTitle}</h3>}
@@ -61,23 +158,18 @@ function Preview({ proposal }: { proposal: PageChangeProposal }) {
 function Diff({ proposal, canonicalContent, canonicalTitle }: { proposal: PageChangeProposal; canonicalContent: unknown[]; canonicalTitle: string }) {
   const current = useMemo(() => blocks(canonicalContent), [canonicalContent]);
   const proposed = useMemo(() => blocks(proposal.proposedContent), [proposal.proposedContent]);
-  const changes = useMemo(() => {
-    const before = new Map(current.map((block) => [block.key, block]));
-    const after = new Map(proposed.map((block) => [block.key, block]));
-    const rows: Array<{ kind: 'added' | 'removed' | 'changed'; text: string; type: string; key: string }> = [];
-    proposed.forEach((block) => {
-      const old = before.get(block.key);
-      if (!old) rows.push({ kind: 'added', text: block.text, type: block.type, key: `a-${block.key}` });
-      else if (old.text !== block.text || old.type !== block.type) rows.push({ kind: 'changed', text: block.text, type: block.type, key: `c-${block.key}` });
-    });
-    current.forEach((block) => { if (!after.has(block.key)) rows.push({ kind: 'removed', text: block.text, type: block.type, key: `r-${block.key}` }); });
-    return rows;
-  }, [current, proposed]);
+  const segments = useMemo(() => alignBlocks(current, proposed), [current, proposed]);
   const titleChanged = canonicalTitle !== proposal.proposedTitle;
-  return <div className="proposal-diff" aria-label={t('Changes only')}>
-    {titleChanged && <div className="proposal-diff-row changed"><span className="proposal-diff-kind">{t('Title')}</span><div><del>{canonicalTitle || t('Untitled')}</del><strong>{proposal.proposedTitle || t('Untitled')}</strong></div></div>}
-    {changes.map((change) => <div className={`proposal-diff-row ${change.kind}`} key={change.key}><span className="proposal-diff-kind">{statusLabel(change.kind)}</span><div><span className="proposal-diff-type">{change.type}</span> {change.text || t('Empty block')}</div></div>)}
-    {!titleChanged && changes.length === 0 && <p className="dialog-hint">{t('No block-level changes detected.')}</p>}
+  const noChanges = !titleChanged && segments.every((segment) => segment.kind === 'same');
+  return <div className="proposal-diff proposal-diff-flow" aria-label={t('Changes only')}>
+    {titleChanged && <h3 className="proposal-diff-title">{renderWordDiff(canonicalTitle || t('Untitled'), proposal.proposedTitle || t('Untitled'))}</h3>}
+    {segments.map((segment, index) => {
+      if (segment.kind === 'same') return <div className={`proposal-block proposal-block-${segment.block.type}`} key={`s-${index}`}>{segment.block.text || <span className="proposal-empty-block">{t('Empty block')}</span>}</div>;
+      if (segment.kind === 'modified') return <div className={`proposal-block proposal-block-${segment.after.type} proposal-block-modified`} key={`m-${index}`}>{renderWordDiff(segment.before.text, segment.after.text)}</div>;
+      if (segment.kind === 'added') return <div className={`proposal-block proposal-block-${segment.block.type} proposal-block-added`} key={`a-${index}`}><ins className="diff-ins">{segment.block.text || t('Empty block')}</ins></div>;
+      return <div className={`proposal-block proposal-block-${segment.block.type} proposal-block-removed`} key={`r-${index}`}><del className="diff-del">{segment.block.text || t('Empty block')}</del></div>;
+    })}
+    {noChanges && <p className="dialog-hint">{t('No block-level changes detected.')}</p>}
   </div>;
 }
 
@@ -129,9 +221,24 @@ function StructuredEditor({ proposal, onChange }: { proposal: PageChangeProposal
 export default function ProposalReviewModal({ pageId, initialProposalId, canonicalContent, canonicalTitle, canEdit, onClose, onPublished }: { pageId?: string; initialProposalId?: string; canonicalContent: unknown[]; canonicalTitle: string; canEdit: boolean; onClose: () => void; onPublished: () => void }) {
   const [proposals, setProposals] = useState<PageChangeProposal[]>([]);
   const [selectedId, setSelectedId] = useState(initialProposalId ?? '');
-  const [tab, setTab] = useState<ReviewTab>('edit');
+  const [showEditor, setShowEditor] = useState(false);
   const [busy, setBusy] = useState(false);
   const [loadedCanonical, setLoadedCanonical] = useState({ content: canonicalContent, title: canonicalTitle });
+  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
+  const resizeStart = useRef<{ pointerX: number; width: number } | null>(null);
+  const onSidebarResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    resizeStart.current = { pointerX: event.clientX, width: sidebarWidth };
+  };
+  const onSidebarResizeMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStart.current) return;
+    const next = resizeStart.current.width + (event.clientX - resizeStart.current.pointerX);
+    setSidebarWidth(Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, next)));
+  };
+  const onSidebarResizeEnd = () => { resizeStart.current = null; };
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth)); } catch { /* private mode, quota — nothing to persist to */ }
+  }, [sidebarWidth]);
   useExclusiveModal(onClose);
   useEffect(() => {
     const request = pageId ? api.listProposals(pageId) : api.listAllProposals();
@@ -147,6 +254,7 @@ export default function ProposalReviewModal({ pageId, initialProposalId, canonic
   const canonicalForSelected = selected?.kind === 'create' ? [] : loadedCanonical.content;
   const titleForSelected = selected?.kind === 'create' ? '' : loadedCanonical.title;
   const mayEdit = canEdit && selected?.canEdit !== false;
+  const showDiff = selected?.kind !== 'create';
   const updateSelected = (next: PageChangeProposal) => setProposals((items) => items.map((item) => item.id === next.id ? next : item));
   const persist = async (proposal: PageChangeProposal, notify: boolean) => {
     const updated = await api.updateProposal(proposal.id, { proposedTitle: proposal.proposedTitle, content: proposal.proposedContent, proposedIcon: proposal.proposedIcon, proposedCover: proposal.proposedCover, proposedDescription: proposal.proposedDescription, proposedTags: proposal.proposedTags, factReview: proposal.factReview, relatedCandidates: proposal.relatedCandidates, selectedRelatedIds: proposal.selectedRelatedIds, updatedAt: proposal.updatedAt });
@@ -166,9 +274,10 @@ export default function ProposalReviewModal({ pageId, initialProposalId, canonic
       const current = action === 'publish' ? await persist(selected, false) : selected;
       const updated = pageId ? (action === 'publish' ? await api.publishProposal(pageId, current.id) : await api.rejectProposal(pageId, current.id)) : (action === 'publish' ? await api.publishProposalById(current.id) : await api.rejectProposalById(current.id));
       updateSelected(updated);
+      window.dispatchEvent(new Event(PROPOSALS_CHANGED));
       toast(action === 'publish' ? t(selected.kind === 'create' ? 'Document published' : 'Proposed revision published') : t('Proposed revision rejected'));
       if (action === 'publish') onPublished();
     } catch (error) { toast(error instanceof Error ? error.message : t('Proposal action failed')); } finally { setBusy(false); }
   };
-  return <Portal><div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="dialog proposal-dialog" role="dialog" aria-modal="true" aria-label={t('Human review workspace')}><div className="proposal-dialog-head"><div><h2>{t('Human review workspace')}</h2><p className="dialog-hint">{t('Edit proposal state only. Canonical content changes only after human Publish.')}</p></div><button className="icon-btn" onClick={onClose} aria-label={t('Close')}><X size={18} /></button></div><div className="proposal-layout"><aside className="proposal-sidebar" aria-label={t('Proposal list')}>{proposals.map((proposal) => <button className={`proposal-list-item${proposal.id === selectedId ? ' selected' : ''}`} key={proposal.id} onClick={() => setSelectedId(proposal.id)}><span className="proposal-list-icon"><FileText size={15} /></span><span className="proposal-list-copy"><strong>{proposal.kind === 'create' ? proposal.proposedTitle : (proposal.summary || t('Untitled proposed revision'))}</strong><small>{proposal.kind === 'create' ? t('New document') : t('Edit proposal')} · {proposal.creatorName || t('Unknown creator')} · {formatMoment(proposal.createdAt, 'full')}</small></span><span className={`proposal-status proposal-status-${proposal.status}`}>{statusLabel(proposal.status)}</span></button>)}{proposals.length === 0 && <p className="dialog-hint">{t('No proposals yet.')}</p>}</aside><section className="proposal-main">{selected ? <><div className="proposal-meta"><div><span className={`proposal-status proposal-status-${selected.status}`}>{statusLabel(selected.status)}</span><span className="proposal-creator">{selected.kind === 'create' ? t('New document · Will be created on Publish') : t('Edit proposal · stale protection active')} · {selected.creatorType} · {selected.creatorName || t('Unknown creator')}</span></div>{selected.summary && <p>{selected.summary}</p>}</div><div className="proposal-workspace"><div className="proposal-editor-column">{mayEdit && selected.status === 'pending' && <div className="proposal-editor-fields"><label>{t('Title')}<input value={selected.proposedTitle} onChange={(event) => updateSelected({ ...selected, proposedTitle: event.target.value })} /></label><label>{t('Document body')}</label><StructuredEditor proposal={selected} onChange={updateSelected} /><button className="btn" disabled={busy} onClick={() => void save()}><Save size={15} /> {t('Save edits')}</button></div>}<div className="proposal-tabs" role="tablist"><button className={tab === 'edit' ? 'active' : ''} onClick={() => setTab('edit')} role="tab" aria-selected={tab === 'edit'}><FileText size={15} /> {t('Review')}</button><button className={tab === 'preview' ? 'active' : ''} onClick={() => setTab('preview')} role="tab" aria-selected={tab === 'preview'}><FileText size={15} /> {t('Preview')}</button><button className={tab === 'diff' ? 'active' : ''} onClick={() => setTab('diff')} role="tab" aria-selected={tab === 'diff'}><GitCompare size={15} /> {t('Changes only')}</button></div>{tab === 'diff' ? <Diff proposal={selected} canonicalContent={canonicalForSelected} canonicalTitle={titleForSelected} /> : <Preview proposal={selected} />}</div><ReviewPane proposal={selected} onChange={updateSelected} canEdit={mayEdit} /></div>{mayEdit && selected.status === 'pending' && <div className="dialog-actions proposal-actions"><button className="btn danger" disabled={busy} onClick={() => void act('reject')}><X size={15} /> {t('Reject')}</button><button className="btn primary" disabled={busy} onClick={() => void act('publish')}><Check size={15} /> {t(selected.kind === 'create' ? 'Publish document' : 'Publish revision')}</button></div>}</> : <p className="dialog-hint">{t('Select a proposal to review it.')}</p>}</section></div></div></div></Portal>;
+  return <Portal><div className="modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><div className="dialog proposal-dialog" role="dialog" aria-modal="true" aria-label={t('Human review workspace')}><div className="proposal-dialog-head"><div><h2>{t('Human review workspace')}</h2><p className="dialog-hint">{t('Edit proposal state only. Canonical content changes only after human Publish.')}</p></div><button className="icon-btn" onClick={onClose} aria-label={t('Close')}><X size={18} /></button></div><div className="proposal-layout" style={{ ['--proposal-sidebar-width' as string]: `${sidebarWidth}px` }}><aside className="proposal-sidebar" aria-label={t('Proposal list')}>{proposals.map((proposal) => <button className={`proposal-list-item${proposal.id === selectedId ? ' selected' : ''}`} key={proposal.id} onClick={() => setSelectedId(proposal.id)}><span className="proposal-list-icon"><FileText size={15} /></span><span className="proposal-list-copy"><strong>{proposal.kind === 'create' ? proposal.proposedTitle : (proposal.summary || t('Untitled proposed revision'))}</strong><small>{proposal.kind === 'create' ? t('New document') : t('Edit proposal')} · {proposal.creatorName || t('Unknown creator')} · {formatMoment(proposal.createdAt, 'full')}</small></span><span className={`proposal-status proposal-status-${proposal.status}`}>{statusLabel(proposal.status)}</span></button>)}{proposals.length === 0 && <p className="dialog-hint">{t('No proposals yet.')}</p>}</aside><div className="proposal-resize-handle" role="separator" aria-orientation="vertical" aria-label={t('Resize proposal list')} onPointerDown={onSidebarResizeStart} onPointerMove={onSidebarResizeMove} onPointerUp={onSidebarResizeEnd} onPointerCancel={onSidebarResizeEnd} /><section className="proposal-main">{selected ? <><div className="proposal-meta"><div><span className={`proposal-status proposal-status-${selected.status}`}>{statusLabel(selected.status)}</span><span className="proposal-creator">{selected.kind === 'create' ? t('New document · Will be created on Publish') : t('Edit proposal · stale protection active')} · {selected.creatorType} · {selected.creatorName || t('Unknown creator')}</span></div>{selected.summary && <p>{selected.summary}</p>}</div><div className={`proposal-workspace${showDiff ? ' proposal-workspace-full' : ''}`}><div className="proposal-editor-column">{mayEdit && selected.status === 'pending' && !showEditor && <button className="btn proposal-editor-toggle" onClick={() => setShowEditor(true)}>{t('Edit before publishing')}</button>}{mayEdit && selected.status === 'pending' && showEditor && <div className="proposal-editor-fields"><div className="proposal-editor-fields-head"><label>{t('Title')}<input value={selected.proposedTitle} onChange={(event) => updateSelected({ ...selected, proposedTitle: event.target.value })} /></label><button className="icon-btn" onClick={() => setShowEditor(false)} aria-label={t('Close')}><X size={15} /></button></div><label>{t('Document body')}</label><StructuredEditor proposal={selected} onChange={updateSelected} /><button className="btn" disabled={busy} onClick={() => void save()}><Save size={15} /> {t('Save edits')}</button></div>}{showDiff ? <Diff proposal={selected} canonicalContent={canonicalForSelected} canonicalTitle={titleForSelected} /> : <Preview proposal={selected} />}</div>{!showDiff && <ReviewPane proposal={selected} onChange={updateSelected} canEdit={mayEdit} />}</div>{mayEdit && selected.status === 'pending' && <div className="dialog-actions proposal-actions"><button className="btn danger" disabled={busy} onClick={() => void act('reject')}><X size={15} /> {t('Reject')}</button><button className="btn primary" disabled={busy} onClick={() => void act('publish')}><Check size={15} /> {t(selected.kind === 'create' ? 'Publish document' : 'Publish revision')}</button></div>}</> : <p className="dialog-hint">{t('Select a proposal to review it.')}</p>}</section></div></div></div></Portal>;
 }

@@ -26,7 +26,7 @@ import { BlockContext } from '../blockContext';
 import { revealBlock } from '../revealBlock';
 import CollectionView from './CollectionView';
 import { HistoryModal } from './PageHistory';
-import ProposalReviewModal from './ProposalReviewModal';
+import ProposalReviewModal, { PROPOSALS_CHANGED } from './ProposalReviewModal';
 import CommentsPanel, {
   COMMENTS_CHANGED,
   commentsPanelOpen,
@@ -617,7 +617,25 @@ function PageHeader({
   useMenuDismiss(overflowOpen, overflowWrapRef, () => setOverflowOpen(false));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [proposalsOpen, setProposalsOpen] = useState(!!initialProposalId);
+  const [pendingProposals, setPendingProposals] = useState(0);
   const [openComments, setOpenComments] = useState(0);
+  // Same idea as the comment count below: a page with a proposal sitting in
+  // review used to look identical to one with none — nothing short of opening
+  // "Proposed revisions" blind ever told you otherwise. This is what fixes that.
+  useEffect(() => {
+    let alive = true;
+    const count = () =>
+      api
+        .listProposals(pageId, 'pending')
+        .then((items) => alive && setPendingProposals(items.length))
+        .catch(() => {});
+    void count();
+    window.addEventListener(PROPOSALS_CHANGED, count);
+    return () => {
+      alive = false;
+      window.removeEventListener(PROPOSALS_CHANGED, count);
+    };
+  }, [pageId]);
   // Same rule as in Editor, and it has to be asked here too: this is where the
   // button, the menu entries and the count live.
   const canComment = page.type !== 'collection';
@@ -910,6 +928,16 @@ function PageHeader({
           >
             <MessageSquare size={17} />
             {openComments > 0 && <span className="badge-count">{openComments}</span>}
+          </button>
+          )}
+          {pendingProposals > 0 && (
+          <button
+            className="icon-btn"
+            title={plural(pendingProposals, '{n} proposed change awaiting review', '{n} proposed changes awaiting review', { n: pendingProposals })}
+            onClick={() => setProposalsOpen(true)}
+          >
+            <GitCompare size={17} />
+            <span className="badge-count">{pendingProposals}</span>
           </button>
           )}
           <NotificationBell onNavigate={onNavigate} />

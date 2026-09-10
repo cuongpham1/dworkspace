@@ -224,6 +224,7 @@
   "Duplicate": "Duplizieren",
   "Dworkspace fonts": "Dworkspace-Schriften",
   "Each one brings its databases, views and house rules — and no data. You fill it.": "Jede bringt ihre Datenbanken, Ansichten und Hausregeln mit — und keine Daten. Die füllst du.",
+  "Edit before publishing": "Vor der Veröffentlichung bearbeiten",
   "Edit the template itself": "Die Vorlage selbst bearbeiten",
   "Email": "E-Mail",
   "Email domain allowed": "E-Mail-Domain freigegeben",
@@ -1014,6 +1015,10 @@
     "one": "{n} private Seite",
     "other": "{n} private Seiten"
   },
+  "{n} proposed changes awaiting review": {
+    "one": "{n} vorgeschlagene Änderung wartet auf Prüfung",
+    "other": "{n} vorgeschlagene Änderungen warten auf Prüfung"
+  },
   "{n} resolved comments": {
     "one": "{n} erledigter Kommentar",
     "other": "{n} erledigte Kommentare"
@@ -1072,6 +1077,7 @@
   "Proposal changes could not be saved": "Änderungen am Vorschlag konnten nicht gespeichert werden",
   "Proposal changes saved": "Änderungen am Vorschlag gespeichert",
   "Related document candidates": "Kandidaten für verwandte Dokumente",
+  "Resize proposal list": "Vorschlagsliste anpassen",
   "Review": "Prüfen",
   "Save edits": "Änderungen speichern",
   "Select a proposal to review it.": "Wähle einen Vorschlag zur Prüfung aus.",
