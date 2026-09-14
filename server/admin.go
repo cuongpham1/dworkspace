@@ -357,7 +357,7 @@ func (s *Server) baseURL(r *http.Request) string {
 	if isHTTPS(r) {
 		proto = "https"
 	}
-	return proto + "://" + r.Host
+	return proto + "://" + s.effectiveHost(r)
 }
 
 // publicShareBase returns the best EXTERNAL base URL for user-facing share links
@@ -390,7 +390,7 @@ func (s *Server) publicShareBase(r *http.Request) string {
 	if isHTTPS(r) {
 		proto = "https"
 	}
-	return proto + "://" + r.Host
+	return proto + "://" + s.effectiveHost(r)
 }
 
 // sendMail delivers a plain-text message via the configured SMTP server. Returns

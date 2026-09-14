@@ -285,6 +285,23 @@ func isHTTPS(r *http.Request) bool {
 		r.Header.Get("X-Forwarded-Ssl") == "on"
 }
 
+// effectiveHost is what the BROWSER thinks it is talking to — usually
+// r.Host, but when a reverse proxy sits in front (trust_proxy on) and forwards
+// X-Forwarded-Host, that is the one the OAuth canonical-origin check and the
+// public-URL fallbacks need: a proxy that terminates the public hostname
+// itself (rewriting Host to reach its own upstream, as Cloudflare's Quick
+// Tunnel edge forces) leaves r.Host holding the PROXY'S hostname, not the
+// public one, and comparing that against public_base_url would never match —
+// an unconditional redirect loop, not a security check.
+func (s *Server) effectiveHost(r *http.Request) string {
+	if s.boolSetting("trust_proxy") {
+		if h := r.Header.Get("X-Forwarded-Host"); h != "" {
+			return h
+		}
+	}
+	return r.Host
+}
+
 // ---- handlers ----
 
 func (s *Server) userCount() (int, error) {
