@@ -597,6 +597,13 @@ export default function App() {
   // the first tab if none is active). Use openInNewTab to add a background tab.
   const navigate = useCallback((id: string | null, replace = false) => {
     setIndexOpen(false); // any navigation leaves the full-screen index overlay
+    // A document navigation always leaves the Skills section (it has its own
+    // routing, entered only via /skills — see SkillsApp). Without this, the
+    // URL and the tab state moved to the clicked document while `skillsRoute`
+    // stayed set, so `<main>` kept rendering the skill screen: a click that
+    // silently updates the address bar and the sidebar's active row but
+    // never changes what's on screen.
+    setSkillsRoute(null);
     let nextTabs = tabsRef.current;
     if (id && !tabsRef.current.includes(id)) {
       const active = activeRef.current;
@@ -615,6 +622,7 @@ export default function App() {
   // openInNewTab adds `id` as a new tab right after the active one and focuses it.
   const openInNewTab = useCallback((id: string) => {
     setIndexOpen(false);
+    setSkillsRoute(null); // same reasoning as navigate() above
     const prev = tabsRef.current;
     let nextTabs = prev;
     if (!prev.includes(id)) {
