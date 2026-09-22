@@ -22,7 +22,7 @@ import PropertyValue from './PropertyValue';
 import { dworkspaceSchema } from '../pageLink';
 import IconPicker from './IconPicker';
 import { PageIcon } from '../pageIcon';
-import { BlockContext } from '../blockContext';
+import { BlockContext, EmbedDepthContext } from '../blockContext';
 import { revealBlock } from '../revealBlock';
 import CollectionView from './CollectionView';
 import { HistoryModal } from './PageHistory';
@@ -100,6 +100,9 @@ export interface EditorProps {
   onMetaChange: (id: string, patch: Partial<PageMeta>) => void;
   onMissing: (id: string) => void;
   onNavigate: (id: string | null) => void;
+  // An embedded page opens beside what you are reading, not instead of it —
+  // see the embed block in blocks.tsx.
+  onOpenInNewTab: (id: string) => void;
   onCreatePage: (parentId: string | null, type?: 'doc' | 'collection') => void;
   // Deleting was reachable from the sidebar tree only. A database ROW — and any
   // page filed under one — never appears there as a tree item, so nothing in the
@@ -292,6 +295,7 @@ export default function Editor(props: EditorProps) {
             pagesById={props.pagesById}
             tagColors={props.tagColors}
             onNavigate={props.onNavigate}
+            onOpenInNewTab={props.onOpenInNewTab}
             onCreatePage={props.onCreatePage}
             onPagesChanged={props.onPagesChanged}
             onReset={() => setNonce((n) => n + 1)}
@@ -1557,6 +1561,10 @@ interface CollabProps {
   pagesById: Map<string, PageMeta>;
   tagColors: Record<string, string>;
   onNavigate: (id: string | null) => void;
+  /** An embedded page opens beside what you are reading rather than instead of
+   *  it — see the embed block in blocks.tsx. Travels as far as BlockContext,
+   *  which is the only way a custom block can reach it. */
+  onOpenInNewTab: (id: string) => void;
   onCreatePage: (parentId: string | null, type?: 'doc' | 'collection') => void;
   onPagesChanged: () => void;
   onReset: () => void;
@@ -1678,6 +1686,7 @@ function BlockContent({
   onNavigate,
   onCreatePage,
   onPagesChanged,
+  onOpenInNewTab,
   structureOpen,
   onAddSectionComment,
   onOpenCommentAt,
@@ -1693,6 +1702,7 @@ function BlockContent({
   pagesById: Map<string, PageMeta>;
   tagColors: Record<string, string>;
   onNavigate: (id: string | null) => void;
+  onOpenInNewTab: (id: string) => void;
   onCreatePage: (parentId: string | null, type?: 'doc' | 'collection') => void;
   onPagesChanged: () => void;
   onAddSectionComment?: (blockId: string, snippet: string) => void;
@@ -1889,6 +1899,14 @@ function BlockContent({
         icon: <span>▦</span>,
         onItemClick: () =>
           insertOrUpdateBlockForSlashMenu(editor, { type: 'database' } as never),
+      },
+      {
+        title: t('Embed a page'),
+        subtext: t("Show another page's content here, read-only"),
+        aliases: ['embed', 'einbetten', 'transclude', 'transklusion', 'include', 'nhung'], // i18n-ok: search aliases, deliberately multilingual so a German user can type it
+        group: 'Basic blocks',
+        icon: <span>⧉</span>,
+        onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: 'embed' } as never),
       },
       {
         title: t('Table of contents'),
@@ -2190,7 +2208,13 @@ function BlockContent({
         {/* The database block renders inside the editor and would otherwise
             not reach the page list, the tag colours or navigation. */}
         <div className="comment-marker-anchor" ref={markerAnchorRef}>
-        <BlockContext.Provider value={{ pagesById, tagColors, onNavigate, onPagesChanged }}>
+        <BlockContext.Provider
+          value={{ pagesById, tagColors, onNavigate, onPagesChanged, onOpenInNewTab }}
+        >
+        {/* The page being read counts as an ancestor of everything in it, so a
+            page that embeds ITSELF is caught at the first hop rather than after
+            drawing one copy of itself. */}
+        <EmbedDepthContext.Provider value={{ depth: 0, ancestors: [pageId] }}>
         <BlockNoteView editor={editor} theme={theme} editable={canEdit} slashMenu={false} formattingToolbar={false}>
           <SuggestionMenuController triggerCharacter="/" getItems={getSlashItems} />
           <SuggestionMenuController
@@ -2205,6 +2229,7 @@ function BlockContent({
             formattingToolbar={() => <CommentFormattingToolbar onAddSectionComment={onAddSectionComment} />}
           />
         </BlockNoteView>
+        </EmbedDepthContext.Provider>
         </BlockContext.Provider>
         {/* Comment markers as a separate, React-owned overlay rather than
             attributes written onto BlockNote's own DOM nodes — ProseMirror

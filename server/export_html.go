@@ -195,6 +195,12 @@ func renderBlockHTML(b *strings.Builder, blk mdBlock) {
 		if id := strProp(blk.Props, "collectionId", ""); id != "" {
 			b.WriteString(`<p><a href="/p/` + html.EscapeString(id) + `">▦ Datenbank</a></p>`)
 		}
+	case "embed":
+		// The reference, as in the Markdown export — the text lives in the
+		// embedded page and a copy would drift from it.
+		if id := strProp(blk.Props, "pageId", ""); id != "" {
+			b.WriteString(`<p><a href="/p/` + html.EscapeString(id) + `">⧉ Embedded page</a></p>`)
+		}
 	case "toc":
 		// Generated client-side; skip in export.
 	// columnList is the OLD shape, from the paid package that used to provide

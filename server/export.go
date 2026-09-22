@@ -168,6 +168,16 @@ func renderBlocks(b *strings.Builder, blocks []mdBlock, depth int) {
 			if id := strProp(blk.Props, "collectionId", ""); id != "" {
 				b.WriteString(indent + "[Datenbank](/p/" + id + ")\n\n")
 			}
+		case "embed":
+			// An embedded page, by the same argument as the database above: the
+			// block holds a reference and the text lives in the other page, so
+			// the export carries a link there. Inlining the body would turn one
+			// page into two copies that drift apart the moment either is edited
+			// — and the whole reason to embed rather than paste was to not have
+			// that.
+			if id := strProp(blk.Props, "pageId", ""); id != "" {
+				b.WriteString(indent + "[Embedded page](/p/" + id + ")\n\n")
+			}
 		case "toc":
 			// Generated client-side from headings; nothing meaningful to export.
 		case "columnList", "column":

@@ -1369,5 +1369,11 @@
   "On a section": "Zu einem Abschnitt",
   "This section": "Dieser Abschnitt",
   "This section has a comment": "Dieser Abschnitt hat einen Kommentar",
-  "Reply": "Antworten"
+  "Reply": "Antworten",
+  "Embed a page": "Seite einbetten",
+  "Show another page's content here, read-only": "Den Inhalt einer anderen Seite hier anzeigen, schreibgeschützt",
+  "No page found": "Keine Seite gefunden",
+  "Search pages…": "Seiten suchen…",
+  "Open embedded page": "Eingebettete Seite öffnen",
+  "You do not have access to this page.": "Du hast keinen Zugriff auf diese Seite."
 }

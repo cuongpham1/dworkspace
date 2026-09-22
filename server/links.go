@@ -21,7 +21,12 @@ func extractLinks(content []byte) []string {
 	walk = func(n any) {
 		switch t := n.(type) {
 		case map[string]any:
-			if t["type"] == "pageLink" {
+			// An embed block carries a pageId in the same shape and is a
+			// STRONGER reference than a link — the page is not merely pointed
+			// at, it is reproduced. Leaving it out meant a page could be shown
+			// in five others and still report no linked references, so nobody
+			// editing it could tell who was reading it.
+			if t["type"] == "pageLink" || t["type"] == "embed" {
 				if props, ok := t["props"].(map[string]any); ok {
 					if id, ok := props["pageId"].(string); ok && id != "" && !seen[id] {
 						seen[id] = true

@@ -12048,3 +12048,107 @@ body:has(.live-down) .update-banner {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Embedded page (transclusion) ---- */
+
+.bn-page-embed {
+  position: relative;
+  /* Stated, not inherited: BlockNote lays a custom block out as a flex item, so
+     without this the card is only as wide as its widest line and a short
+     quotation sits in a box narrower than everything around it. */
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px 4px;
+  margin: 6px 0;
+  cursor: pointer;
+  background: var(--bg);
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.bn-page-embed:hover,
+.bn-page-embed:focus-visible {
+  border-color: var(--accent, var(--fg));
+  background: color-mix(in srgb, var(--fg) 3%, transparent);
+}
+
+.bn-page-embed-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  padding-bottom: 6px;
+  min-width: 0;
+}
+
+.bn-page-embed-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only on hover: a permanent arrow on every embed turns a quiet reference into
+   a row of buttons, and the whole box is clickable anyway. */
+.bn-page-embed-open {
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 120ms ease;
+}
+
+.bn-embed:hover .bn-page-embed-open,
+.bn-embed:focus-visible .bn-page-embed-open {
+  opacity: 0.7;
+}
+
+.bn-page-embed-denied {
+  padding: 4px 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* A cycle or too many levels: the header alone, which is the link this always
+   was underneath. */
+.bn-page-embed-flat {
+  padding-bottom: 10px;
+}
+
+/* The nested editor inherits the host page's theme through the same variables
+   everything else reads, so nothing has to be passed to it — but it does arrive
+   with BlockNote's own container padding and minimum height, which belong to a
+   full-page editor and not to a quotation inside one.
+
+   The class is bn-page-embed and not bn-embed because .bn-embed is taken, by
+   the video embed a few thousand lines up: it carries `aspect-ratio: 16/9` and
+   `background: #000`, so an embedded page silently became a black 16:9 box
+   whose height came from its WIDTH. That is what the box was, and no amount of
+   changing what was inside it ever moved it.
+
+   pointer-events: none is what makes the whole box one click target. Text in a
+   nested read-only editor cannot be selected with the mouse anyway (ProseMirror
+   places no caret in one), so nothing is being taken away — and without it the
+   click lands on the inner editor and does nothing at all. */
+.bn-page-embed-body {
+  pointer-events: none;
+  user-select: none;
+}
+
+.bn-page-embed-body .bn-container,
+.bn-page-embed-body .bn-editor {
+  background: transparent !important;
+  color: inherit;
+  min-height: 0 !important;
+  padding-inline: 0 !important;
+}
+
+/* The editor reserves a click-to-write strip under the last block. An embed is
+   not written into, so that space is only a hole in the middle of the page. */
+.bn-page-embed-body .bn-block-group {
+  padding-bottom: 0 !important;
+}
+
+.bn-page-embed-body [contenteditable='false'] {
+  caret-color: transparent;
+}

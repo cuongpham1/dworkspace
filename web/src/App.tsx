@@ -1257,6 +1257,7 @@ export default function App() {
               key={currentId}
               pageId={currentId}
               pagesById={pagesById}
+              onOpenInNewTab={openInNewTab}
               user={me.user}
               theme={theme}
               canEdit={canEditCurrent}

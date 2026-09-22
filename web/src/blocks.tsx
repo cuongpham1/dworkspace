@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
-import { createReactBlockSpec } from '@blocknote/react';
-import { Table2 } from 'lucide-react';
-import { useBlockCtx } from './blockContext';
+import { createReactBlockSpec, useCreateBlockNote } from '@blocknote/react';
+import { BlockNoteView } from '@blocknote/mantine';
+import { ExternalLink, FileText, Table2 } from 'lucide-react';
+import { api } from './api';
+import {
+  EMBED_MAX_DEPTH,
+  EmbedDepthContext,
+  useBlockCtx,
+  useEmbedDepth,
+} from './blockContext';
 import { MERMAID_REV, renderMermaid } from './mermaidLoader';
 import { PageIcon } from './pageIcon';
 import CollectionView from './components/CollectionView';
@@ -204,7 +211,7 @@ export const bookmarkSpec = createReactBlockSpec(
       const src = embedSrc(url);
       if (src) {
         return (
-          <div className="bn-embed" contentEditable={false}>
+          <div className="bn-page-embed" contentEditable={false}>
             <iframe
               src={src}
               title={url}
@@ -517,6 +524,187 @@ export const mermaidSpec = createReactBlockSpec(
             >
               <span className="bn-mermaid-empty">{error || t('Empty diagram')}</span>
             </button>
+          )}
+        </div>
+      );
+    },
+  },
+);
+
+// ---- Embed (transclusion) ----
+// A page shown where it is referenced, rather than a link you have to follow —
+// Obsidian's ![[page]]. What is stored is the id and nothing else: the host
+// document holds {"pageId": "…"} and not one word of the embedded text, so the
+// two never drift and editing the source is the only way to change what appears
+// here.
+//
+// It renders as a real read-only BlockNoteView rather than HTML, and that is not
+// a preference. mermaidSpec's comment above records why: ProseMirror rebuilds a
+// node view whenever it likes, and markup written into one is wiped and never
+// written back. A React component survives that — which is how databaseSpec can
+// render a whole CollectionView in a block.
+//
+// READING ONLY. A click anywhere opens the source in a tab, which is also what
+// makes the click unambiguous: text inside cannot be selected with the mouse
+// (ProseMirror puts no caret inside a nested read-only editor), so a click that
+// did nothing would just feel broken.
+
+function EmbedBody({ content, schema }: { content: unknown[]; schema: never }) {
+  const nested = useCreateBlockNote({ schema, initialContent: content as never });
+  return (
+    <BlockNoteView
+      editor={nested}
+      editable={false}
+      sideMenu={false}
+      slashMenu={false}
+      formattingToolbar={false}
+      filePanel={false}
+      linkToolbar={false}
+      tableHandles={false}
+    />
+  );
+}
+
+export const embedSpec = createReactBlockSpec(
+  {
+    type: 'embed',
+    propSchema: { pageId: { default: '' } },
+    content: 'none',
+  } as const,
+  {
+    render: (props) => {
+      const { block, editor } = props;
+      const pageId = (block.props as { pageId: string }).pageId;
+      const { pagesById, onOpenInNewTab } = useBlockCtx();
+      const { depth, ancestors } = useEmbedDepth();
+      const [q, setQ] = useState('');
+      const [content, setContent] = useState<unknown[] | null>(null);
+      // Distinguished from an empty page: the server answers 404 for a page the
+      // reader may not see (anti-IDOR, see handleGetPage), and an embed must say
+      // so rather than draw a blank box that looks like the page is empty.
+      const [denied, setDenied] = useState(false);
+
+      const cycle = ancestors.includes(pageId);
+      const tooDeep = depth >= EMBED_MAX_DEPTH;
+      const load = !!pageId && !cycle && !tooDeep;
+
+      useEffect(() => {
+        if (!load) return;
+        let alive = true;
+        const fetchIt = () =>
+          api
+            .getPage(pageId)
+            .then((p) => {
+              if (!alive) return;
+              setDenied(false);
+              setContent(p.content as unknown as unknown[]);
+            })
+            .catch(() => alive && setDenied(true));
+        fetchIt();
+        // Same contract as DbRows: fetched once and never again is how an embed
+        // ends up showing last week's text. The page event is content-free, so
+        // unlike the rows event it cannot be narrowed to the source — every
+        // embed on screen refetches. That is a handful of small requests, not
+        // the fifty-thousand-row case that rule was written for.
+        window.addEventListener('dworkspace:pages', fetchIt);
+        return () => {
+          alive = false;
+          window.removeEventListener('dworkspace:pages', fetchIt);
+        };
+      }, [pageId, load]);
+
+      // Picking the page. Same shape as the database block's picker, for the
+      // same reason: an empty block has to offer the choice somewhere, and a
+      // dialog would fight the editor for focus.
+      if (!pageId) {
+        const hits = [...pagesById.values()]
+          .filter((p) => !p.trashed && !p.isTemplate && p.type === 'doc')
+          .filter((p) => (p.title || '').toLowerCase().includes(q.trim().toLowerCase()));
+        return (
+          <div className="bn-db-picker" contentEditable={false}>
+            <input
+              className="prop-input"
+              placeholder={t('Search pages…')}
+              value={q}
+              autoFocus
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+            <div className="bn-db-picker-list">
+              {hits.length === 0 && <div className="bn-db-picker-empty">{t('No page found')}</div>}
+              {hits.slice(0, 8).map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => editor.updateBlock(block, { props: { pageId: p.id } } as never)}
+                >
+                  <PageIcon icon={p.icon} size={15} fallback={<FileText size={15} />} />{' '}
+                  {p.title || t('Untitled')}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
+      const meta = pagesById.get(pageId);
+      const title = meta?.title || t('Untitled');
+      const open = () => onOpenInNewTab(pageId);
+
+      // The title comes from the page list, which is permission-filtered, so a
+      // page the reader cannot see has no entry and is not named here either.
+      const header = (
+        <span className="bn-page-embed-head">
+          <PageIcon icon={meta?.icon ?? ''} size={15} fallback={<FileText size={15} />} />
+          <span className="bn-page-embed-title">{denied ? t('Untitled') : title}</span>
+          <ExternalLink size={13} className="bn-page-embed-open" />
+        </span>
+      );
+
+      // A cycle or too many levels degrades to the link the embed always was.
+      // Saying which of the two it is would only be noise: either way what you
+      // do about it is click through.
+      if (cycle || tooDeep) {
+        return (
+          <div className="bn-page-embed bn-page-embed-flat" contentEditable={false} onClick={open}>
+            {header}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          className="bn-page-embed"
+          contentEditable={false}
+          role="button"
+          tabIndex={0}
+          aria-label={t('Open embedded page')}
+          onClick={open}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              open();
+            }
+          }}
+        >
+          {header}
+          {denied ? (
+            <div className="bn-page-embed-denied">{t('You do not have access to this page.')}</div>
+          ) : content === null ? (
+            <div className="bn-page-embed-denied">{t('Loading…')}</div>
+          ) : (
+            // aria-hidden, because the whole thing is one button to a reader
+            // that cannot see it: the nested editor still reports itself as a
+            // textbox, and announcing a read-only copy as an editable field is
+            // worse than not announcing it. The title in the header is what
+            // names the target.
+            <div className="bn-page-embed-body" aria-hidden="true">
+              <EmbedDepthContext.Provider
+                value={{ depth: depth + 1, ancestors: [...ancestors, pageId] }}
+              >
+                <EmbedBody content={content} schema={editor.schema as never} />
+              </EmbedDepthContext.Provider>
+            </div>
           )}
         </div>
       );

@@ -1,7 +1,15 @@
 import type { CSSProperties } from 'react';
 import { BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from '@blocknote/core';
 import { createReactInlineContentSpec } from '@blocknote/react';
-import { bookmarkSpec, databaseSpec, calloutSpec, tocSpec, columnsSpec, mermaidSpec } from './blocks';
+import {
+  bookmarkSpec,
+  databaseSpec,
+  calloutSpec,
+  tocSpec,
+  columnsSpec,
+  mermaidSpec,
+  embedSpec,
+} from './blocks';
 
 // A "pageLink" is an inline mention of another dworkspace page. It stores the target
 // page id and a display label. Clicking it dispatches a navigation event that
@@ -83,6 +91,7 @@ export const dworkspaceSchema =
       database: databaseSpec(),
       columns: columnsSpec(),
       mermaid: mermaidSpec(),
+      embed: embedSpec(),
     },
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
