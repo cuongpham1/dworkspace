@@ -80,6 +80,11 @@ interface Props {
   // can re-pin right from the overlay instead of hunting the hamburger behind it.
   collapsed?: boolean;
   onExpand?: () => void;
+  // The tree arrives a level at a time (see App's loadChildren). Unfolding a
+  // node asks for its children; opening Trash asks for the bin, which is not in
+  // any other scope. Both are idempotent — App keeps the record of what it has.
+  onLoadChildren?: (parentId: string) => void;
+  onLoadTrash?: () => void;
 }
 
 interface DropTarget {
@@ -605,7 +610,13 @@ function TreeItem({
   const isDb = p.type === 'collection';
   // Databases have no tree children (their rows are excluded from /api/pages) but
   // can be expanded to lazily reveal their rows — so they get a chevron too.
-  const hasExpand = kids.length > 0 || isDb;
+  //
+  // hasChildren carries the third case: under lazy loading a node's children
+  // are not fetched until it is unfolded, so kids.length is 0 for every node
+  // nobody has opened yet and the tree would look entirely flat. The server
+  // works the flag out with the same rule that decides what unfolding returns,
+  // so the chevron cannot promise something that is not there.
+  const hasExpand = kids.length > 0 || isDb || p.hasChildren === true;
   const isExpanded = ctx.expanded.has(p.id);
   const dt = ctx.dropTarget?.id === p.id ? ctx.dropTarget.zone : null;
   // Row context menu (⋯): close on outside click / Escape, not just mouse-leave.
@@ -731,6 +742,8 @@ export default function Sidebar({
   onSetFont,
   collapsed = false,
   onExpand,
+  onLoadChildren,
+  onLoadTrash,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [trashOpen, setTrashOpen] = useState(false);
@@ -914,7 +927,13 @@ export default function Sidebar({
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {
+        next.add(id);
+        // Unfolding is the request. Collapsing deliberately keeps the children
+        // in hand: folding a node away is not a reason to have to fetch them
+        // again when it is opened a second time.
+        onLoadChildren?.(id);
+      }
       return next;
     });
 
@@ -1474,10 +1493,21 @@ export default function Sidebar({
           }
         </SidebarSection>
       )}
-      {trashRoots.length > 0 && (
+      {/* Always here, unlike the other sections, because its contents are not
+          loaded until it is opened — and a Trash that hides itself until the
+          bin has been fetched can never be opened to fetch it. The count
+          appears once there is one to show. */}
+      {(trashRoots.length > 0 || !!onLoadTrash) && (
         <div className="trash-section">
-          <button className="trash-toggle" onClick={() => setTrashOpen(!trashOpen)}>
-            <span className="sidebar-item-label"><Trash2 size={15} /> {t('Trash')}</span> <span className="trash-count">{trashRoots.length}</span>
+          <button
+            className="trash-toggle"
+            onClick={() => {
+              if (!trashOpen) onLoadTrash?.();
+              setTrashOpen(!trashOpen);
+            }}
+          >
+            <span className="sidebar-item-label"><Trash2 size={15} /> {t('Trash')}</span>{' '}
+            {trashRoots.length > 0 && <span className="trash-count">{trashRoots.length}</span>}
           </button>
           {trashOpen &&
             trashRoots.map((p) => (

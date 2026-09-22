@@ -19,6 +19,11 @@ export interface PageMeta {
   description: string;
   snippet: string; // plain-text preview for the notes list (derived server-side)
   thumb: string; // first image URL, '' if none
+  // Only the scopes that load one level at a time set this (?scope=roots,
+  // ?parent=): the sidebar needs to draw a chevron before it knows what is
+  // under a node. Undefined from the whole-tree scope, where the answer is
+  // already in the list — so read it as "unknown", never as "no children".
+  hasChildren?: boolean;
 }
 
 export interface Workspace {

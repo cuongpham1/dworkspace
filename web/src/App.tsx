@@ -275,6 +275,52 @@ export default function App() {
   const inFlight = useRef<Promise<void> | null>(null);
   const loadAgain = useRef(false);
 
+  // WHAT IS LOADED, rather than "everything". The tree arrives a level at a
+  // time — the same shape DbRows has used for a database's rows all along, now
+  // applied to the tree itself, because the sidebar starts with every node
+  // collapsed and used to fetch 1428 pages to draw about sixty rows.
+  //
+  // These three say which scopes are currently in `pages`, and a reload rebuilds
+  // exactly those. Rebuilding rather than merging is deliberate: a merge has no
+  // way to notice a page that was deleted somewhere else, so the sidebar would
+  // keep drawing it until a reload of the whole app.
+  const loadedParents = useRef<Set<string>>(new Set());
+  const binLoaded = useRef(false);
+  // Notes and the index genuinely list every page. Both are behind a click, so
+  // the cost is paid by whoever opens them instead of by everybody at startup.
+  const wantFullTree = notesActive || indexOpen;
+  const wantFullTreeRef = useRef(wantFullTree);
+  const currentIdRef = useRef<string | null>(null);
+  // Ids already requested by id, so an unsatisfiable one is asked for once
+  // rather than on every render. Cleared on a full reload, where the answer may
+  // legitimately have changed.
+  const asked = useRef<Set<string>>(new Set());
+
+  const fetchTree = useCallback(async (): Promise<PageMeta[]> => {
+    // The whole tree answers everything the levels could, so it supersedes them
+    // for as long as it is wanted. The record of which levels are open is kept
+    // rather than cleared: closing the index has to leave the sidebar standing,
+    // and without it the next reload would collapse the tree under somebody who
+    // had unfolded half of it.
+    if (wantFullTreeRef.current) return api.listPages();
+    // Open tabs and the current page are needed BY ID: a tab may point at any
+    // depth, or at a database row, which is not in the tree at all. Without
+    // this the tab bar shows blanks and the editor loses its breadcrumb.
+    const named = [...new Set([...tabsRef.current, currentIdRef.current].filter(Boolean))] as string[];
+    const parts = await Promise.all([
+      api.listPages({ roots: true }),
+      ...[...loadedParents.current].map((id) => api.listPages({ parent: id })),
+      binLoaded.current ? api.listPages({ trashed: true }) : Promise.resolve([]),
+      named.length ? api.listPages({ ids: named }) : Promise.resolve([]),
+    ]);
+    // First writer wins, and the order above is chosen for it: the scopes that
+    // carry hasChildren come before ?ids=, which does not, so a page that
+    // appears in both keeps its chevron.
+    const byId = new Map<string, PageMeta>();
+    for (const p of parts.flat()) if (!byId.has(p.id)) byId.set(p.id, p);
+    return [...byId.values()];
+  }, []);
+
   const loadPages = useCallback((): Promise<void> => {
     if (inFlight.current) {
       loadAgain.current = true;
@@ -285,7 +331,8 @@ export default function App() {
         do {
           loadAgain.current = false;
           try {
-            setPages(await api.listPages());
+            asked.current.clear();
+            setPages(await fetchTree());
             setLoadError(false);
           } catch (e) {
             if ((e as Error).message !== 'unauthorized') setLoadError(true);
@@ -298,7 +345,100 @@ export default function App() {
     })();
     inFlight.current = run;
     return run;
+  }, [fetchTree]);
+
+  // Unfolding a node. Same contract as DbRows: fetched when it is opened, and
+  // remembered so the next reload brings it back rather than collapsing the
+  // tree under somebody who was reading it.
+  const loadChildren = useCallback(async (parentId: string) => {
+    if (loadedParents.current.has(parentId)) return;
+    loadedParents.current.add(parentId);
+    try {
+      const kids = await api.listPages({ parent: parentId });
+      setPages((prev) => {
+        const byId = new Map((prev ?? []).map((p) => [p.id, p]));
+        for (const k of kids) byId.set(k.id, k);
+        return [...byId.values()];
+      });
+    } catch {
+      // Forget it, so opening the node again is a retry instead of a node that
+      // is permanently empty for the rest of the session.
+      loadedParents.current.delete(parentId);
+    }
   }, []);
+
+  // The bin, when its section is opened. It was 1303 of this instance's 1428
+  // pages and travelled in every response, to fill a list that starts collapsed.
+  const loadTrash = useCallback(async () => {
+    if (binLoaded.current) return;
+    binLoaded.current = true;
+    try {
+      const gone = await api.listPages({ trashed: true });
+      setPages((prev) => {
+        const byId = new Map((prev ?? []).map((p) => [p.id, p]));
+        for (const g of gone) byId.set(g.id, g);
+        return [...byId.values()];
+      });
+    } catch {
+      binLoaded.current = false;
+    }
+  }, []);
+
+  // Opening Notes or the index is the moment the whole tree is actually needed.
+  // Closing them needs no fetch at all — what is already in hand is a superset
+  // of what the sidebar draws.
+  useEffect(() => {
+    const climbing = wantFullTree && !wantFullTreeRef.current;
+    wantFullTreeRef.current = wantFullTree;
+    if (climbing) void loadPages();
+  }, [wantFullTree, loadPages]);
+
+  // The page you are reading and the tabs across the top are needed by id, and
+  // under lazy loading they are no longer guaranteed to be in the tree that was
+  // fetched: a page three levels down, or a database row, is reachable by link
+  // without any of its ancestors ever having been unfolded. Missing, the tab
+  // bar draws blanks and the editor loses the breadcrumb above the title.
+  //
+  // Parents are asked for in the same breath, because the breadcrumb needs the
+  // parent of the page and not only the page.
+  useEffect(() => {
+    currentIdRef.current = currentId;
+    if (!pages) return;
+    const have = new Map(pages.map((p) => [p.id, p]));
+    const missing = new Set<string>();
+    for (const id of [...openTabs, currentId]) {
+      if (!id) continue;
+      const p = have.get(id);
+      if (!p) missing.add(id);
+      else if (p.parentId && !have.has(p.parentId)) missing.add(p.parentId);
+    }
+    // Never ask twice for the same id. Without this the effect is a loop: it
+    // depends on `pages` and writes to it, so an id that cannot be satisfied —
+    // a page deleted for good, still named by a stale tab in localStorage —
+    // would stay missing and be requested again on every pass, for ever.
+    for (const id of asked.current) missing.delete(id);
+    if (missing.size === 0) return;
+    for (const id of missing) asked.current.add(id);
+    let alive = true;
+    void api
+      .listPages({ ids: [...missing] })
+      .then((found) => {
+        if (!alive || found.length === 0) return;
+        setPages((prev) => {
+          const byId = new Map((prev ?? []).map((p) => [p.id, p]));
+          // Do not overwrite: a copy already in hand may carry hasChildren,
+          // which the id scope does not compute.
+          for (const f of found) if (!byId.has(f.id)) byId.set(f.id, f);
+          return [...byId.values()];
+        });
+      })
+      .catch(() => {
+        /* a page that cannot be fetched is handled by the editor's own 404 path */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [currentId, openTabs, pages]);
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -852,12 +992,20 @@ export default function App() {
   const movePage = useCallback(
     async (id: string, parentId: string | null, position: number) => {
       await api.updatePage(id, { parentId, position });
-      const fresh = await api.listPages();
-      setPages(fresh);
+      // Only the level the page landed on can have changed order, and that is
+      // the level the reader is looking at — so ask for it, not for the tree.
+      // Overwriting rather than merge-if-absent: positions are exactly what
+      // moved, and a stale copy is the thing being replaced.
+      const level = await api.listPages(parentId ? { parent: parentId } : { roots: true });
+      setPages((prev) => {
+        const byId = new Map((prev ?? []).map((p) => [p.id, p]));
+        for (const p of level) byId.set(p.id, p);
+        return [...byId.values()];
+      });
       // Self-heal float precision: if two siblings ended up closer than this,
       // renumber them to clean integers so midpoints can't exhaust f64.
-      const siblings = fresh
-        .filter((p) => !p.trashed && (p.parentId ?? null) === parentId)
+      const siblings = level
+        .filter((p) => !p.trashed)
         .map((p) => p.position)
         .sort((a, b) => a - b);
       const tooDense = siblings.some((v, i) => i > 0 && v - siblings[i - 1] < 1e-6);
@@ -866,10 +1014,10 @@ export default function App() {
         // guess which root pages are meant — and it used to take every one in
         // the whole instance.
         await api.reindexSiblings(parentId, parentId ? undefined : currentWs).catch(() => {});
-        setPages(await api.listPages());
+        await loadPages();
       }
     },
-    [currentWs],
+    [currentWs, loadPages],
   );
 
   const handleMissing = useCallback(
@@ -985,6 +1133,8 @@ export default function App() {
       <Sidebar
         onUserChanged={(u) => setMe((prev) => (prev ? { ...prev, user: u } : prev))}
         canCreateWorkspace={!!me?.user?.isAdmin || me?.allowUserWorkspaces !== false}
+        onLoadChildren={loadChildren}
+        onLoadTrash={loadTrash}
         pages={pages}
         favorites={favorites}
         workspaces={workspaces}

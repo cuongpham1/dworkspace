@@ -72,9 +72,29 @@ func TestListPagesIncludesRowsWithChildren(t *testing.T) {
 	if got["row-dead-kid"] {
 		t.Errorf("row with only a trashed child leaked into /api/pages")
 	}
-	// …while the trashed child itself still travels, so the trash view works.
-	if !got["dead-sub"] {
-		t.Errorf("trashed sub-page missing — the trash needs it")
+	// …and the trashed child is no longer in this answer at all. It used to be:
+	// every list carried the bin so the trash view had it to hand, which on a
+	// real workspace meant 1303 dead pages in every response to draw a section
+	// that starts collapsed. It arrives from ?trashed=1 now instead.
+	if got["dead-sub"] {
+		t.Errorf("trashed sub-page came back in the default scope")
+	}
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest("GET", "/api/pages?trashed=1", nil)
+	req.Header.Set("Cookie", cookie)
+	s.ServeHTTP(rec, req)
+	var binned []struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&binned); err != nil {
+		t.Fatalf("decode bin: %v", err)
+	}
+	inBin := map[string]bool{}
+	for _, p := range binned {
+		inBin[p.ID] = true
+	}
+	if !inBin["dead-sub"] {
+		t.Errorf("trashed sub-page missing from ?trashed=1 — the trash needs it")
 	}
 }
 

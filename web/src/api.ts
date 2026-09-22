@@ -305,7 +305,21 @@ export const api = {
     }),
   deleteToken: (id: string) => req<{ ok: boolean }>(`/api/tokens/${id}`, { method: 'DELETE' }),
 
-  listPages: () => req<PageMeta[]>('/api/pages'),
+  /** Part of the page tree. No argument still means the whole live tree, which
+   *  is what the views that genuinely list everything want; the sidebar asks
+   *  for a level at a time. See handleListPages for what each scope returns. */
+  listPages: (scope?: { roots: true } | { parent: string } | { ids: string[] } | { trashed: true }) => {
+    const q = !scope
+      ? ''
+      : 'roots' in scope
+        ? '?scope=roots'
+        : 'parent' in scope
+          ? `?parent=${encodeURIComponent(scope.parent)}`
+          : 'ids' in scope
+            ? `?ids=${scope.ids.map(encodeURIComponent).join(',')}`
+            : '?trashed=1';
+    return req<PageMeta[]>(`/api/pages${q}`);
+  },
   createPage: (
     parentId: string | null,
     title = '',

@@ -35,6 +35,12 @@ type pageMeta struct {
 	Description string          `json:"description"`
 	Snippet     string          `json:"snippet"`
 	Thumb       string          `json:"thumb"`
+	// Set only by the scopes that load one level of the tree (see
+	// handleListPages): the sidebar has to draw a chevron before it knows what
+	// is underneath, and asking would defeat the point of not having loaded it.
+	// A pointer so "no children" and "nobody worked it out" stay distinguishable
+	// — as a plain bool the full-tree scope would claim every page is childless.
+	HasChildren *bool `json:"hasChildren,omitempty"`
 }
 
 type page struct {
@@ -59,8 +65,91 @@ func scanMeta(sc interface{ Scan(...any) error }) (pageMeta, error) {
 	return m, err
 }
 
+// scanMetaKids is scanMeta for the scopes that add the has-children flag. Kept
+// beside it rather than folded in with a variadic: the column list and the scan
+// order have to agree, and two short functions that each state their own order
+// are harder to get wrong than one that infers it.
+func scanMetaKids(sc interface{ Scan(...any) error }) (pageMeta, error) {
+	var m pageMeta
+	var trashedAt sql.NullString
+	var props, tags string
+	var isTemplate, kids int
+	err := sc.Scan(&m.ID, &m.ParentID, &m.Title, &m.Icon, &m.Cover, &m.Position, &m.UpdatedAt, &trashedAt, &m.Type, &props, &m.WorkspaceID, &m.OwnerID, &m.Visibility, &isTemplate, &tags, &m.Description, &m.Snippet, &m.Thumb, &kids)
+	m.Trashed = trashedAt.Valid
+	m.Props = json.RawMessage(props)
+	m.IsTemplate = isTemplate != 0
+	m.Tags = []string{}
+	if tags != "" {
+		json.Unmarshal([]byte(tags), &m.Tags)
+	}
+	has := kids != 0
+	m.HasChildren = &has
+	return m, err
+}
+
 const pageMetaCols = `id, parent_id, title, icon, cover, position, updated_at, trashed_at, type, props, workspace_id, owner_id, visibility, is_template, tags, description, snippet, thumb`
 
+// templateCTE names every template and everything filed under one. A template
+// is a snapshot that stands on its own and is not a page in anybody's tree; its
+// CHILDREN are not either, which is the part that used to leak. Every scope
+// below starts from this so no scope can forget.
+const templateCTE = `WITH RECURSIVE tpl(id) AS (
+		SELECT id FROM pages WHERE is_template = 1
+		UNION ALL
+		SELECT p.id FROM pages p JOIN tpl ON p.parent_id = tpl.id
+	)`
+
+// liveTreeFilter is what makes a live page a tree page, and is shared by every
+// live scope so that a page cannot appear as a root, then be missing from its
+// parent's children, or show a chevron that unfolds to nothing.
+//
+// The second clause drops database rows: they number in the tens of thousands
+// and belong to the paginated collection view, not the sidebar. Except a row
+// that carries live sub-pages, which has to stay or its children have no parent
+// in the tree and the sidebar draws them flat under Documents; and except a
+// database nested in another, which is not a row at all.
+const liveTreeFilter = `p.trashed_at IS NULL
+	AND p.id NOT IN (SELECT id FROM tpl)
+	AND (p.parent_id IS NULL
+	     OR p.type = 'collection'
+	     OR (SELECT type FROM pages parent WHERE parent.id = p.parent_id) != 'collection'
+	     OR EXISTS (SELECT 1 FROM pages c WHERE c.parent_id = p.id AND c.trashed_at IS NULL))`
+
+// hasKidsExpr decides whether a page gets a chevron, and it has to agree with
+// what ?parent= returns for it or the tree offers an arrow that unfolds onto
+// nothing. So it is liveTreeFilter again, restated for a child c of p: the last
+// three clauses are the database-row rule with parent(c) resolved to p, which
+// is the part a simple "does it have any child" check got wrong — every
+// database appeared to have children because its rows are children, and rows
+// are exactly what the tree leaves out.
+const hasKidsExpr = `EXISTS (SELECT 1 FROM pages c
+		WHERE c.parent_id = p.id AND c.trashed_at IS NULL
+		AND c.id NOT IN (SELECT id FROM tpl)
+		AND (p.type != 'collection'
+		     OR c.type = 'collection'
+		     OR EXISTS (SELECT 1 FROM pages g WHERE g.parent_id = c.id AND g.trashed_at IS NULL)))`
+
+// handleListPages answers with part of the page tree, chosen by query string.
+//
+// It used to answer with all of it, always, and that is what made opening the
+// app slow: one workspace here returns 1428 pages of which 1303 are in the bin
+// and 1369 are not on screen when the sidebar first paints — the tree starts
+// with every node collapsed. So the whole tree went over the wire, three times
+// over, to draw about sixty rows.
+//
+// The scopes:
+//
+//	(none)        the live tree, whole. What the views that genuinely list
+//	              everything ask for — Notes and the index — and they are
+//	              behind a click, so nobody pays for them on startup.
+//	scope=roots   top-level pages only, each carrying hasChildren. The shell.
+//	parent=<id>   one level, loaded when that node is unfolded.
+//	ids=a,b,c     named pages, for the open tabs and the current page's
+//	              parent: those are needed by id and may sit anywhere.
+//	trashed=1     the bin, loaded when the Trash section is opened.
+//
+// Trashed pages are in exactly one scope now instead of every scope. They were
+// 88% of the bytes and the sidebar keeps Trash collapsed by default.
 func (s *Server) handleListPages(w http.ResponseWriter, r *http.Request) {
 	// Scope to the user's workspaces (further narrowed by a workspace-scoped
 	// token), then drop private subtrees they can't see.
@@ -73,43 +162,57 @@ func (s *Server) handleListPages(w http.ResponseWriter, r *http.Request) {
 	for i, v := range ws {
 		args[i] = v
 	}
-	// Exclude database rows (children of a collection): they can number in the
-	// tens of thousands and belong in the paginated collection view, not the
-	// sidebar tree. Trashed rows are still returned so the trash works.
-	//
-	// EXCEPT rows that carry live sub-pages (W124): without their row those
-	// sub-pages have no parent in the list, and the sidebar showed them flat
-	// under Documents, stripped of their context. Rows with children are the
-	// rare case, so the tens-of-thousands argument above keeps holding.
-	//
-	// And EXCEPT a database nested inside another one. It is not a row — the
-	// count argument never applied to it — but it was dropped by the same rule,
-	// so the sidebar only ever saw it through the rows endpoint and drew it as
-	// a row: no ⋯ menu, and therefore no way to move it back out again.
-	// Exclude templates AND everything under them. A template is a snapshot that
-	// stands on its own; it is not a page in anybody's tree. It used to be one,
-	// hidden by a filter in each view that listed pages — six of those, each
-	// checking only the page's OWN flag, so a template's CHILDREN leaked into
-	// Documents with an invisible parent, and deleting the template took them
-	// with it. Every new view was another chance to forget. Drawing the line
-	// here means no view can get it wrong, the same way database rows are
-	// handled two comments down.
-	//
-	// Trashed ones still come through, or a template in the bin could never be
-	// restored.
-	rows, err := s.db.Query(`WITH RECURSIVE tpl(id) AS (
-			SELECT id FROM pages WHERE is_template = 1
-			UNION ALL
-			SELECT p.id FROM pages p JOIN tpl ON p.parent_id = tpl.id
-		)
-		SELECT `+pageMetaCols+` FROM pages p
-		WHERE workspace_id IN (`+placeholders(len(ws))+`)
-		AND (p.trashed_at IS NOT NULL OR p.id NOT IN (SELECT id FROM tpl))
-		AND (parent_id IS NULL OR trashed_at IS NOT NULL
-		     OR p.type = 'collection'
-		     OR (SELECT type FROM pages parent WHERE parent.id = p.parent_id) != 'collection'
-		     OR EXISTS (SELECT 1 FROM pages c WHERE c.parent_id = p.id AND c.trashed_at IS NULL))
-		ORDER BY position, created_at`, args...)
+	inWs := `p.workspace_id IN (` + placeholders(len(ws)) + `)`
+	q := r.URL.Query()
+
+	var query string
+	scan := scanMeta
+	switch {
+	// The bin. Templates come through here too, or one thrown away could never
+	// be restored; so do database rows, which is where a deleted row is found.
+	case q.Get("trashed") == "1":
+		query = `SELECT ` + pageMetaCols + ` FROM pages p
+			WHERE ` + inWs + ` AND p.trashed_at IS NOT NULL
+			ORDER BY p.position, p.created_at`
+
+	// One level, for a node the reader just unfolded.
+	case q.Has("parent"):
+		query = templateCTE + ` SELECT ` + pageMetaCols + `, ` + hasKidsExpr + ` FROM pages p
+			WHERE ` + inWs + ` AND p.parent_id = ? AND ` + liveTreeFilter + `
+			ORDER BY p.position, p.created_at`
+		args = append(args, q.Get("parent"))
+		scan = scanMetaKids
+
+	// Named pages. Not a tree scope: an open tab or the current page's parent
+	// has to arrive whatever its depth, and whether or not it would qualify as
+	// a tree page — a database row is not in the tree and can still be open.
+	case q.Has("ids"):
+		ids := splitIDs(q.Get("ids"))
+		if len(ids) == 0 {
+			writeJSON(w, []pageMeta{})
+			return
+		}
+		query = `SELECT ` + pageMetaCols + ` FROM pages p
+			WHERE ` + inWs + ` AND p.id IN (` + placeholders(len(ids)) + `)`
+		for _, id := range ids {
+			args = append(args, id)
+		}
+
+	// The shell: roots, with enough to draw a chevron on each.
+	case q.Get("scope") == "roots":
+		query = templateCTE + ` SELECT ` + pageMetaCols + `, ` + hasKidsExpr + ` FROM pages p
+			WHERE ` + inWs + ` AND p.parent_id IS NULL AND ` + liveTreeFilter + `
+			ORDER BY p.position, p.created_at`
+		scan = scanMetaKids
+
+	// Everything live, for the views that really do list everything.
+	default:
+		query = templateCTE + ` SELECT ` + pageMetaCols + ` FROM pages p
+			WHERE ` + inWs + ` AND ` + liveTreeFilter + `
+			ORDER BY p.position, p.created_at`
+	}
+
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		httpError(w, 500, err.Error())
 		return
@@ -117,7 +220,7 @@ func (s *Server) handleListPages(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	list := []pageMeta{}
 	for rows.Next() {
-		m, err := scanMeta(rows)
+		m, err := scan(rows)
 		if err != nil {
 			httpError(w, 500, err.Error())
 			return
@@ -125,6 +228,22 @@ func (s *Server) handleListPages(w http.ResponseWriter, r *http.Request) {
 		list = append(list, m)
 	}
 	writeJSON(w, s.filterReadable(requestUser(r).ID, list))
+}
+
+// splitIDs parses the ids= list, capped because it arrives from a query string
+// and becomes that many SQL placeholders. The callers ask for open tabs and one
+// parent; anything near this limit is not that.
+func splitIDs(raw string) []string {
+	out := []string{}
+	for _, v := range strings.Split(raw, ",") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+			if len(out) == 200 {
+				break
+			}
+		}
+	}
+	return out
 }
 
 // handleListTemplates is the templates' own list, because they are no longer in
