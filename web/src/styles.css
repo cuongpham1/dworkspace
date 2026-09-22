@@ -1384,6 +1384,32 @@ button {
   opacity: 0.75;
 }
 
+/* A section label that is also the control for folding it away. Styled to look
+   exactly like the labels beside it — the chevron is what says it can be
+   pressed, and a button that announced itself any louder would make the other
+   three sections look broken for not having one. */
+.structure-fold {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+.structure-fold:hover {
+  color: var(--fg);
+}
+
+.structure-graph {
+  /* The canvas draws to its own box; the panel only says how wide. */
+  padding: 0 4px 2px;
+}
+
 /* The path down to this page. Quieter than the sections below it: it is
    context, not something you came here to read. */
 .structure-above {
@@ -10651,6 +10677,18 @@ body:has(.confirm-dialog) .dialog:not(.confirm-dialog) {
 }
 .graph-canvas:active {
   cursor: grabbing;
+}
+
+/* The same graph in the structure panel. It cannot inherit the height above:
+   that one is measured against the window because the library gives the graph
+   the screen, and here it is one section of a scrolling column that also has to
+   fit sub-pages, files and backlinks under it. A fixed box, tall enough for two
+   hops to lay themselves out and short enough that the lists below stay in
+   view. */
+.graph-wrap-compact {
+  height: 220px;
+  min-height: 0;
+  border: 1px solid var(--border);
 }
 
 .graph-bar {

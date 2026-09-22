@@ -31,6 +31,11 @@ const LINK_LEN = 130; // a mention may sit further away
 const RELATION_LEN = 150;
 const DAMPING = 0.86;
 const CENTER_PULL = 0.004;
+// Below this much movement per frame, a compact graph has arrived and stops
+// asking for frames. Low enough that it parks only once the layout has really
+// stopped changing, high enough that it does not idle at 60fps forever on the
+// residual jitter the alpha floor keeps alive.
+const PARK_SPEED = 0.06;
 
 // The dworkspace palette, turned up. A graph is the one screen where punchy is
 // correct: here the colour is doing work rather than decorating text somebody
@@ -126,6 +131,7 @@ export default function GraphView({
   edges: linkEdges,
   onNavigate,
   focusId,
+  compact = false,
 }: {
   pages: PageMeta[];
   edges: GraphEdge[];
@@ -133,6 +139,20 @@ export default function GraphView({
   // When set, the graph shows only this page's neighborhood (2 hops) instead
   // of the whole workspace — what "See related graph" on a page opens into.
   focusId?: string;
+  // The structure panel's local graph: a few hundred pixels of canvas standing
+  // beside a document rather than a screen of its own. Two things change.
+  //
+  // The bar goes. Filters, the export button and a line of instructions do not
+  // fit across 340px, and a reader who wants them has the full graph one click
+  // away.
+  //
+  // And the simulation PARKS. At full size the loop deliberately never stops —
+  // alpha floors at 0.12 so the picture keeps breathing, because a frozen graph
+  // reads as a screenshot. That reasoning does not survive the move: this canvas
+  // sits next to an editor somebody is typing into, all day, and a permanent
+  // 60fps loop beside it is a battery bill for decoration nobody is looking at.
+  // Here it settles, stops, and wakes on touch.
+  compact?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoverTitle, setHoverTitle] = useState<string | null>(null);
@@ -156,6 +176,17 @@ export default function GraphView({
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
 
+  // Set by the draw loop; called by anything that makes the picture move again
+  // after it has parked (compact mode only — see the `compact` prop).
+  const wakeRef = useRef<() => void>(() => {});
+  const wake = () => wakeRef.current();
+
+  // Whether the reader has taken the framing into their own hands. Until they
+  // do, a compact graph keeps fitting itself to its box; afterwards it holds
+  // still, because a view that re-centres itself out from under a drag is
+  // maddening.
+  const adjusted = useRef(false);
+
   // Every distinct filter a reader can toggle: "Where pages are filed" (parent),
   // "Mentions" (link) if any exist, and one entry per distinct relation label.
   // Built from the DATA rather than hard-coded, because relation labels are
@@ -177,12 +208,18 @@ export default function GraphView({
     return list;
   }, [linkEdges]);
 
+  // One hop in the panel, two on the full screen. Two hops off a well-connected
+  // page is 33 nodes, which is a readable picture across a window and a hairball
+  // across 320 pixels — every label overlapping every other. One hop answers the
+  // question the panel is for ("what is next to this page") and the reader walks
+  // outwards by clicking, which is how Obsidian's local graph behaves too.
+  const hops = compact ? 1 : 2;
   const focusSet = useMemo(
     // Every edge kind counts here — a page reachable only through a relation
     // field (Feature "impacts" Metric) is exactly the kind of connection
     // "See related graph" exists to surface, not one to leave out.
-    () => (focusId && !showWhole ? neighborhood(focusId, pages, linkEdges, 2) : null),
-    [focusId, showWhole, pages, linkEdges],
+    () => (focusId && !showWhole ? neighborhood(focusId, pages, linkEdges, hops) : null),
+    [focusId, showWhole, pages, linkEdges, hops],
   );
 
   // ---- build the graph ----
@@ -287,7 +324,11 @@ export default function GraphView({
     }
 
     state.current = { ...state.current, nodes, edges, byId, alpha: 1, pan: { x: 0, y: 0 }, zoom: 1 };
+    // A new graph gets to choose its own framing again, even if the reader had
+    // zoomed the last one.
+    adjusted.current = false;
     setCounts({ nodes: nodes.length, links });
+    wake(); // a new graph has to unfold, even if the old one had already settled
   }, [pages, linkEdges, focusSet, focusId, filters]);
 
   // ---- simulate and draw ----
@@ -303,15 +344,31 @@ export default function GraphView({
     const muted = css.getPropertyValue('--muted').trim() || '#787774';
     const bg = css.getPropertyValue('--bg').trim() || '#ffffff';
 
+    // Parking, and what wakes it (compact mode only — see the `compact` prop).
+    let parked = false;
+    const wakeUp = () => {
+      if (!parked) return;
+      parked = false;
+      raf = requestAnimationFrame(step);
+    };
+    wakeRef.current = wakeUp;
+
     const resize = () => {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      wakeUp(); // the canvas was cleared by the resize; it has to be redrawn
     };
     resize();
     window.addEventListener('resize', resize);
+    // The window is not the only thing that changes this canvas's size: the
+    // structure panel can be dragged wider and the section folded away, neither
+    // of which fires a window resize. A parked graph would keep a stale bitmap
+    // stretched over the new box.
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
 
     const step = () => {
       const s = state.current;
@@ -366,6 +423,7 @@ export default function GraphView({
         b.vx -= fx;
         b.vy -= fy;
       }
+      let fastest = 0;
       for (let i = 0; i < n; i++) {
         const a = nodes[i];
         if (i === s.drag) continue;
@@ -375,11 +433,67 @@ export default function GraphView({
         a.vy *= DAMPING;
         a.x += a.vx * s.alpha;
         a.y += a.vy * s.alpha;
+        // How far anything actually MOVED this frame, not how fast it is
+        // travelling. The two come apart because alpha scales the step and not
+        // the velocity: forces keep feeding vx long after alpha has shrunk the
+        // step to nothing, so a velocity test would keep the loop awake forever
+        // over motion too small to see. Measured at 60fps on a settled graph
+        // before this was the right quantity.
+        const moved = (Math.abs(a.vx) + Math.abs(a.vy)) * s.alpha;
+        if (moved > fastest) fastest = moved;
       }
       // Cools down to a stop instead of jittering forever, and never quite to
       // zero — a graph that breathes very slightly looks alive; one frozen
       // solid looks like a screenshot.
-      s.alpha = Math.max(0.12, s.alpha * 0.994);
+      //
+      // The panel does not get the floor. That floor is what keeps the full
+      // graph breathing, and breathing is exactly what must not happen beside
+      // an editor: with it, movement never reaches zero and the loop never
+      // parks. Dragging a node sets alpha back to 0.7 and the layout comes
+      // alive again, which is the only time anyone is watching it move.
+      s.alpha = compact ? s.alpha * 0.99 : Math.max(0.12, s.alpha * 0.994);
+
+      // --- fit the box ---
+      // The forces are tuned in world units for a window-sized canvas: a dozen
+      // nodes settle across roughly a thousand of them. Dropped into a 320×220
+      // panel at zoom 1 that simply runs off all four edges, which is what the
+      // first version did. Rather than retune the physics for two sizes, the
+      // camera is fitted to whatever the layout turned out to be.
+      //
+      // Eased rather than snapped, and only until the reader touches it: the
+      // graph is still unfolding while this runs, so jumping to each frame's
+      // exact fit would make the whole picture pulse.
+      if (compact && !adjusted.current && n > 0) {
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const a of nodes) {
+          if (a.x - a.r < minX) minX = a.x - a.r;
+          if (a.y - a.r < minY) minY = a.y - a.r;
+          if (a.x + a.r > maxX) maxX = a.x + a.r;
+          if (a.y + a.r > maxY) maxY = a.y + a.r;
+        }
+        const pad = 26; // room for the focused node's glow and its label
+        const want = Math.min(
+          rect.width / Math.max(maxX - minX + pad * 2, 1),
+          rect.height / Math.max(maxY - minY + pad * 2, 1),
+        );
+        // Never magnified past 1: a lone pair of dots blown up to fill the box
+        // looks like an error, not a close-up.
+        const targetZoom = Math.min(1, Math.max(0.2, want));
+        const midX = (minX + maxX) / 2;
+        const midY = (minY + maxY) / 2;
+        s.zoom += (targetZoom - s.zoom) * 0.12;
+        s.pan.x += (-midX * s.zoom - s.pan.x) * 0.12;
+        s.pan.y += (-midY * s.zoom - s.pan.y) * 0.12;
+        // Still converging counts as movement, or the loop would park mid-zoom
+        // with the graph half out of its box. An explicit threshold rather than
+        // a scaled-up difference: the easing approaches its target and never
+        // reaches it, so any multiple of the remainder stays above any floor
+        // forever and nothing ever parks.
+        if (Math.abs(targetZoom - s.zoom) > 0.002) fastest = Math.max(fastest, PARK_SPEED * 2);
+      }
 
       // --- draw ---
       ctx.clearRect(0, 0, rect.width, rect.height);
@@ -463,25 +577,49 @@ export default function GraphView({
         }
         // Labels only for the big ones and for whatever is under the pointer:
         // every label at once is a wall of text with a graph behind it.
-        if ((a.r > 7 || a.isDb || i === hov || a.id === focusId) && lit && s.zoom > 0.55) {
+        //
+        // In the panel that threshold is far too generous — seventeen titles
+        // across 320 pixels is the wall, whatever the rule that picked them. So
+        // there, exactly two can speak: the page you are on, and the one under
+        // the pointer. The rest are dots you hover to identify.
+        const wants = compact
+          ? i === hov || a.id === focusId
+          : (a.r > 7 || a.isDb || i === hov || a.id === focusId) && s.zoom > 0.55;
+        if (wants && lit) {
           ctx.globalAlpha = i === hov ? 1 : 0.75;
           ctx.fillStyle = fg;
-          ctx.font = `${i === hov || a.id === focusId ? 600 : 400} 11px system-ui, sans-serif`;
+          // Drawn at a constant size on screen. Everything else in here is in
+          // world units and scales with the zoom, but text that shrinks with the
+          // fit — and the fit can reach 0.2 — is text nobody can read.
+          const px = (compact ? 10.5 : 11) / (compact ? s.zoom : 1);
+          ctx.font = `${i === hov || a.id === focusId ? 600 : 400} ${px}px system-ui, sans-serif`;
           ctx.textAlign = 'center';
-          const label = a.title.length > 26 ? a.title.slice(0, 25) + '…' : a.title;
-          ctx.fillText(label, a.x, a.y + a.r + 12);
+          const max = compact ? 30 : 26;
+          const label = a.title.length > max ? a.title.slice(0, max - 1) + '…' : a.title;
+          ctx.fillText(label, a.x, a.y + a.r + px + 3);
         }
         ctx.globalAlpha = 1;
       }
       ctx.restore();
+
+      // This frame is drawn; decide whether there needs to be another one.
+      // Only in compact mode, and never while a finger is on it: dragging a
+      // node past a stationary graph has to keep painting, and a hover
+      // highlight has to be able to fade back out.
+      if (compact && fastest < PARK_SPEED && s.drag === null && s.hover === null) {
+        parked = true;
+        raf = 0;
+        return;
+      }
       raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
+      ro.disconnect();
     };
-  }, [focusId]);
+  }, [focusId, compact]);
 
   // ---- pointer ----
   const toWorld = (ev: React.MouseEvent) => {
@@ -538,7 +676,7 @@ export default function GraphView({
   };
 
   return (
-    <div className="graph-wrap">
+    <div className={compact ? 'graph-wrap graph-wrap-compact' : 'graph-wrap'}>
       <canvas
         ref={canvasRef}
         className="graph-canvas"
@@ -567,16 +705,20 @@ export default function GraphView({
             s.nodes[s.drag].vx = 0;
             s.nodes[s.drag].vy = 0;
             s.alpha = Math.max(s.alpha, 0.7);
+            wake();
             return;
           }
           if (panFrom.current) {
             s.pan = { x: e.clientX - panFrom.current.x, y: e.clientY - panFrom.current.y };
+            adjusted.current = true; // their framing now, not the auto-fit's
+            wake();
             return;
           }
           const hit = pick(x, y);
           if (hit !== s.hover) {
             s.hover = hit;
             setHoverTitle(hit === null ? null : s.nodes[hit].title);
+            wake(); // the highlight has to be painted, settled or not
           }
         }}
         onMouseUp={() => {
@@ -588,6 +730,7 @@ export default function GraphView({
           state.current.hover = null;
           panFrom.current = null;
           setHoverTitle(null);
+          wake(); // one more frame, to clear the highlight that is leaving
         }}
         onClick={(e) => {
           const wasDrag = moved.current;
@@ -601,8 +744,11 @@ export default function GraphView({
         onWheel={(e) => {
           const s = state.current;
           s.zoom = Math.min(3, Math.max(0.25, s.zoom * (e.deltaY > 0 ? 0.92 : 1.08)));
+          adjusted.current = true;
+          wake();
         }}
       />
+      {!compact && (
       <div className="graph-bar">
         <span className="graph-count">
           {plural(counts.nodes, '{n} page', '{n} pages')} ·{' '}
@@ -630,6 +776,7 @@ export default function GraphView({
         </button>
         <span className="graph-hint">{t('Drag a dot, scroll to zoom, click to open')}</span>
       </div>
+      )}
       {hoverTitle && <div className="graph-tip">{hoverTitle}</div>}
     </div>
   );

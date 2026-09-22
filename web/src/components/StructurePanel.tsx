@@ -1,11 +1,20 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
-import type { Backlink, PageMeta, DworkspaceFile } from '../types';
+import type { Backlink, GraphEdge, PageMeta, DworkspaceFile } from '../types';
 import { PageIcon } from '../pageIcon';
 import { FilePreview, isPreviewable } from './FilePreview';
 import { formatBytes } from '../format';
 import { t } from '../i18n';
-import { CornerDownRight, FileText, Link2, PanelRightClose, Table2 } from 'lucide-react';
+import GraphView from './GraphView';
+import {
+  ChevronDown,
+  ChevronRight,
+  CornerDownRight,
+  FileText,
+  Link2,
+  PanelRightClose,
+  Table2,
+} from 'lucide-react';
 
 // What a document carries but never showed: the pages below it, the files
 // hanging off it, and who points at it. All three existed — parent_id has
@@ -15,6 +24,7 @@ import { CornerDownRight, FileText, Link2, PanelRightClose, Table2 } from 'lucid
 // to find any of it. The panel is a view onto data that was already there.
 
 const PANEL_KEY = 'dworkspace-structure-open';
+const GRAPH_KEY = 'dworkspace-structure-graph';
 
 export function structurePanelOpen(): boolean {
   return localStorage.getItem(PANEL_KEY) === '1';
@@ -23,6 +33,88 @@ export function structurePanelOpen(): boolean {
 export function setStructurePanelOpen(open: boolean): void {
   if (open) localStorage.setItem(PANEL_KEY, '1');
   else localStorage.removeItem(PANEL_KEY);
+}
+
+// ---- the local graph ----
+//
+// The panel already answers "what is under this page", "what hangs off it" and
+// "who points at it" as three lists. The graph answers the question none of
+// them can: what does this page sit in the MIDDLE of. One hop out, every kind
+// of edge, the page itself lit in the centre — Obsidian's local graph, from the
+// data /api/graph has served the library view all along.
+//
+// Edges are cached across navigations. The editor is keyed by page id, so this
+// panel is torn down and rebuilt every time somebody opens a document, and a
+// fetch per navigation would be a request for data that had not changed. It is
+// small (250 edges for 2,482 pages on the instance this was built against) and
+// changes only when somebody edits a link, which arrives as a pages event
+// anyway.
+const GRAPH_TTL = 60_000;
+let graphCache: { at: number; edges: GraphEdge[] } | null = null;
+let graphInFlight: Promise<GraphEdge[]> | null = null;
+
+function loadGraphEdges(): Promise<GraphEdge[]> {
+  if (graphCache && Date.now() - graphCache.at < GRAPH_TTL) {
+    return Promise.resolve(graphCache.edges);
+  }
+  // Coalesced, not just cached: opening two documents quickly would otherwise
+  // fire two identical requests before either had answered.
+  if (!graphInFlight) {
+    graphInFlight = api
+      .graph()
+      .then((g) => {
+        graphCache = { at: Date.now(), edges: g.edges };
+        return g.edges;
+      })
+      .catch(() => [] as GraphEdge[])
+      .finally(() => {
+        graphInFlight = null;
+      });
+  }
+  return graphInFlight;
+}
+
+// The ids within `hops` steps of `pageId`, over links and filing alike.
+// Deliberately duplicated from GraphView's own neighborhood(): that one runs
+// over the pages it was HANDED, and the whole problem here is working out which
+// pages to hand it before they have been loaded.
+//
+// Two hops, where the panel draws one. The extra ring is fetched but not drawn
+// on purpose: a neighbour's own neighbours are what make the next click
+// instant, and the metadata for one more ring is a few kilobytes.
+function nearbyIds(
+  pageId: string,
+  pagesById: Map<string, PageMeta>,
+  edges: GraphEdge[],
+  hops = 2,
+): Set<string> {
+  const adj = new Map<string, Set<string>>();
+  const join = (a: string, b: string) => {
+    if (!adj.has(a)) adj.set(a, new Set());
+    adj.get(a)!.add(b);
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(b)!.add(a);
+  };
+  for (const p of pagesById.values()) {
+    if (p.parentId) join(p.id, p.parentId);
+  }
+  for (const e of edges) join(e.source, e.target);
+
+  const seen = new Set([pageId]);
+  let frontier: string[] = [pageId];
+  for (let hop = 0; hop < hops; hop++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const nb of adj.get(id) ?? []) {
+        if (!seen.has(nb)) {
+          seen.add(nb);
+          next.push(nb);
+        }
+      }
+    }
+    frontier = next;
+  }
+  return seen;
 }
 
 type TreeItem = { page: PageMeta; depth: number };
@@ -113,9 +205,70 @@ export default function StructurePanel({
   const [files, setFiles] = useState<DworkspaceFile[]>([]);
   const [links, setLinks] = useState<Backlink[]>([]);
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
+  const [edges, setEdges] = useState<GraphEdge[]>(() => graphCache?.edges ?? []);
+  // Neighbours the page tree has not loaded. Since the sidebar started loading
+  // a level at a time, pagesById holds what somebody has unfolded — and a page
+  // two link-hops away is exactly the kind of page nobody unfolded.
+  const [nearby, setNearby] = useState<Map<string, PageMeta>>(new Map());
+  const [graphOpen, setGraphOpen] = useState(() => localStorage.getItem(GRAPH_KEY) !== '0');
+  const askedFor = useRef<Set<string>>(new Set());
 
   const pages = useMemo(() => subtree(pageId, pagesById), [pageId, pagesById]);
   const above = useMemo(() => ancestors(pageId, pagesById), [pageId, pagesById]);
+
+  // The pages the graph may draw: everything already loaded, plus the
+  // neighbours fetched for it. GraphView narrows this to two hops itself.
+  const graphPages = useMemo(() => {
+    const byId = new Map(pagesById);
+    for (const [id, p] of nearby) if (!byId.has(id)) byId.set(id, p);
+    return [...byId.values()];
+  }, [pagesById, nearby]);
+
+  // How much there is to draw — ONE hop, matching what the panel actually
+  // renders. One dot is not a graph: it is the same "nothing links here" the
+  // section below already says, drawn as a circle.
+  const graphSize = useMemo(
+    () => (graphOpen ? nearbyIds(pageId, pagesById, edges, 1).size : 0),
+    [graphOpen, pageId, pagesById, edges],
+  );
+
+  useEffect(() => {
+    if (!graphOpen) return;
+    let alive = true;
+    void loadGraphEdges().then((e) => alive && setEdges(e));
+    return () => {
+      alive = false;
+    };
+  }, [graphOpen, pageId]);
+
+  // Fetch the metadata for neighbours the tree never loaded. One round, not a
+  // loop: the ids come from edges that are already known, and chasing the
+  // parents of the pages this brings back would walk the whole tree one
+  // request at a time. GraphView draws a page whose parent is missing as a root
+  // of its own, which is the honest picture of what is loaded.
+  useEffect(() => {
+    if (!graphOpen) return;
+    const want = [...nearbyIds(pageId, pagesById, edges)].filter(
+      (id) => !pagesById.has(id) && !nearby.has(id) && !askedFor.current.has(id),
+    );
+    if (want.length === 0) return;
+    for (const id of want) askedFor.current.add(id); // never ask twice, even if the answer is "gone"
+    let alive = true;
+    void api
+      .listPages({ ids: want })
+      .then((list) => {
+        if (!alive) return;
+        setNearby((prev) => {
+          const next = new Map(prev);
+          for (const p of list) next.set(p.id, p);
+          return next;
+        });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [graphOpen, pageId, pagesById, edges, nearby]);
 
   useEffect(() => {
     let alive = true;
@@ -150,6 +303,39 @@ export default function StructurePanel({
       {/* The head holds still and only this scrolls — the same shape as the
           comments panel, which is the other thing that can stand here. */}
       <div className="structure-scroll">
+
+        {/* What this page sits in the middle of. Foldable and remembered,
+            because it is the one section here that costs a canvas and a force
+            simulation rather than a few rows of text. */}
+        <div className="structure-section structure-graph-section">
+          <button
+            className="structure-label structure-fold"
+            onClick={() => {
+              const next = !graphOpen;
+              setGraphOpen(next);
+              localStorage.setItem(GRAPH_KEY, next ? '1' : '0');
+            }}
+            aria-expanded={graphOpen}
+          >
+            {graphOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            {t('Graph')}
+            {graphOpen && graphSize > 1 && <span className="structure-count">· {graphSize}</span>}
+          </button>
+          {graphOpen &&
+            (graphSize > 1 ? (
+              <div className="structure-graph">
+                <GraphView
+                  compact
+                  pages={graphPages}
+                  edges={edges}
+                  focusId={pageId}
+                  onNavigate={(id) => onNavigate(id)}
+                />
+              </div>
+            ) : (
+              <div className="structure-empty">{t('Nothing connects to this page yet')}</div>
+            ))}
+        </div>
 
         {/* Where this page sits, before what sits under it. Shown only when
             there is somewhere to go: on a top-level page the section would be an
