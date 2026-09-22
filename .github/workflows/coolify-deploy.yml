@@ -194,6 +194,16 @@ jobs:
           # so a volume path or memory limit edited on the server survives.
           source_compose="$RUNNER_TEMP/docker-compose.yml"
           cp deploy/coolify/docker-compose.yml "$source_compose"
+
+          # The wiki-gate step above edited a tracked file, and git refuses to
+          # switch branches while that edit is outstanding. The image is built
+          # and the manifest is already copied out, so the working tree has done
+          # its job. Restoring it costs nothing and is the difference between
+          # this step working on the second run and only on the first — when the
+          # deploy branch does not exist yet the orphan path never switches
+          # branches, which is why this stayed hidden.
+          git checkout -- .
+
           if git ls-remote --exit-code --heads origin "refs/heads/${DEPLOY_BRANCH}" >/dev/null 2>&1; then
             git fetch origin "${DEPLOY_BRANCH}:${DEPLOY_BRANCH}"
             git checkout "$DEPLOY_BRANCH"
