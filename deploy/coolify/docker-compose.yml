@@ -1,0 +1,54 @@
+# Deployment manifest for Coolify.
+#
+# This file is the SOURCE for the orphan branch that Coolify watches
+# (`coolify-deploy` by default). The CI job copies it there on the first run
+# and afterwards only rewrites the image digest, so every setting you change
+# here after that first bootstrap has to be changed on the deploy branch too —
+# the job deliberately refuses to overwrite live deployment settings.
+#
+# Unlike the repository root docker-compose.yml this one never builds: it
+# points at an image pinned by digest, which is what makes a Coolify redeploy
+# reproducible instead of "whatever :latest meant at pull time".
+services:
+  dworkspace:
+    image: ghcr.io/ducphuclee/dworkspace@sha256:0000000000000000000000000000000000000000000000000000000000000000
+    restart: unless-stopped
+    # Coolify's proxy reaches the container over the internal network, so the
+    # port is exposed but not published on the host. Set the domain on this
+    # service in the Coolify UI and it routes to 8420. If you instead want the
+    # port reachable directly on the host, replace this with:
+    #   ports:
+    #     - "8420:8420"
+    expose:
+      - "8420"
+    volumes:
+      # Host bind, not a named volume: the data lives at a path you can back up,
+      # inspect and restore without going through Docker. Create it before the
+      # first deploy and give it to uid 1000 — the runtime image drops to the
+      # unprivileged `dworkspace` user, and a root-owned host directory makes
+      # the container fail to write its database:
+      #   sudo mkdir -p /home/ubuntu/configs/dworkspace/data
+      #   sudo chown -R 1000:1000 /home/ubuntu/configs/dworkspace/data
+      - /home/ubuntu/configs/dworkspace/data:/data
+    # A container cannot see how much of the host it is meant to get, so
+    # without a limit dworkspace assumes a small machine and indexes fewer large
+    # PDFs than it could. Raise this to what you actually want to give it —
+    # it only affects how much text reaches the search index, never whether an
+    # upload succeeds. In nested setups (Docker inside LXC) neither the cgroup
+    # nor /proc/meminfo tells the truth; use DWORKSPACE_MEMORY_MB there.
+    mem_limit: 4g
+    environment:
+      DWORKSPACE_ADDR: ":8420"
+      DWORKSPACE_DATA: "/data"
+      # DWORKSPACE_MEMORY_MB: "4096"
+      # TLS is terminated by Coolify's proxy, so the container serves plain
+      # HTTP. Only set DWORKSPACE_TLS_CERT/KEY if you bypass that proxy.
+    healthcheck:
+      # /api/health is the one unauthenticated route, and BusyBox wget ships in
+      # the alpine runtime — no extra package needed to tell a live instance
+      # from a container that merely started.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8420/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

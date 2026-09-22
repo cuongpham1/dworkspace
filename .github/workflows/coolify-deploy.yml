@@ -1,0 +1,213 @@
+name: Coolify - Sync upstream, build image, pin it on the deploy branch
+
+# Continuous deployment of THIS fork, separate from docker.yml on purpose:
+# docker.yml publishes RELEASES (tag v*, multi-arch, ghcr.io/saltmd/salt.md)
+# and this one publishes whatever main currently is, for one server. Keeping
+# them apart means a broken main never moves a release tag, and a release never
+# surprises the Coolify host.
+#
+# The schedule exists because the fork cannot see upstream pushes: GitHub sends
+# no event to a fork when its parent moves. So we poll, merge, and build in one
+# run. One run rather than two workflows is deliberate — a push made with
+# GITHUB_TOKEN does not trigger another workflow (GitHub's loop guard), so a
+# separate "sync" workflow would leave the build sitting there un-triggered
+# unless we handed it a personal access token. This way no PAT exists at all.
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    # Hourly at :17. Scheduled runs are best-effort and GitHub delays them
+    # under load, so treat this as "within the hour", not "on the hour".
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  # Two runs would race on the deploy branch and the slower one could push a
+  # digest older than the faster one. Last run wins, cleanly.
+  group: coolify-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/ducphuclee/dworkspace
+  # Coolify watches this branch. Override with the repository variable
+  # COOLIFY_DEPLOY_BRANCH when the deployment branch has another name.
+  DEPLOY_BRANCH: ${{ vars.COOLIFY_DEPLOY_BRANCH || 'coolify-deploy' }}
+  UPSTREAM_REPO: ${{ vars.UPSTREAM_REPO || 'cuongpham1/dworkspace' }}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sync.outputs.sha }}
+      changed: ${{ steps.sync.outputs.changed }}
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          # A merge needs the real history, not the single commit a default
+          # checkout gives you.
+          fetch-depth: 0
+
+      - name: Merge upstream into fork main
+        id: sync
+        run: |
+          set -euo pipefail
+          before="$(git rev-parse HEAD)"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream main
+
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Fork already contains every upstream commit"
+          elif git merge --no-edit upstream/main; then
+            git push origin HEAD:main
+          else
+            # The only fork-only files are .github/workflows/coolify-deploy.yml
+            # and deploy/coolify/, so a conflict means upstream now ships a file
+            # at one of those paths. That needs a human decision about which
+            # version wins, not an automatic resolution.
+            git merge --abort || true
+            echo "::error::Upstream conflicts with the fork-only deployment files. Resolve locally and push."
+            exit 1
+          fi
+
+          after="$(git rev-parse HEAD)"
+          echo "sha=${after}" >> "$GITHUB_OUTPUT"
+          if [ "$before" = "$after" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: sync
+    # A scheduled run that found nothing new has nothing to build. Pushes and
+    # manual runs always build, so you can force a rebuild without a code change.
+    if: needs.sync.outputs.changed == 'true' || github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the synced commit
+        uses: actions/checkout@v4
+        with:
+          # NOT the commit that triggered the run: on a scheduled run that is
+          # the pre-merge main, and building it would ship stale code.
+          ref: ${{ needs.sync.outputs.sha }}
+
+      - name: Resolve version
+        id: v
+        # Same string the backend is stamped with and the frontend is built
+        # with, so the in-app "reload" banner fires on an actual deploy rather
+        # than on every page load.
+        run: echo "ver=main-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          # Not `type=sha`: that reads github.sha, which on a scheduled run is
+          # the PRE-merge commit — the tag would name a commit the image does
+          # not contain. steps.v reads the working tree we actually built.
+          tags: |
+            type=raw,value=${{ steps.v.outputs.ver }}
+            type=raw,value=latest
+          # Same reason: correct the revision metadata-action derives from the
+          # stale trigger commit.
+          labels: |
+            org.opencontainers.image.revision=${{ needs.sync.outputs.sha }}
+
+      - name: Build and push Docker image
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.v.outputs.ver }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Pin image digest in deployment compose
+        run: |
+          set -euo pipefail
+          digest="${{ steps.image.outputs.digest }}"
+
+          if [ -z "$digest" ]; then
+            echo "Build did not return an image digest" >&2
+            exit 1
+          fi
+
+          # Bootstrap a deployment-only orphan branch on its first run. Later
+          # runs fetch the existing branch and preserve its compose settings,
+          # so a volume path or memory limit edited on the server survives.
+          source_compose="$RUNNER_TEMP/docker-compose.yml"
+          cp deploy/coolify/docker-compose.yml "$source_compose"
+          if git ls-remote --exit-code --heads origin "refs/heads/${DEPLOY_BRANCH}" >/dev/null 2>&1; then
+            git fetch origin "${DEPLOY_BRANCH}:${DEPLOY_BRANCH}"
+            git checkout "$DEPLOY_BRANCH"
+          else
+            git checkout --orphan "$DEPLOY_BRANCH"
+            git rm -rf . >/dev/null 2>&1 || true
+            cp "$source_compose" docker-compose.yml
+          fi
+
+          compose="docker-compose.yml"
+
+          # Replace only the application image; the deployment branch contains
+          # the compose manifest and must remain free of generated build files.
+          sed -E -i.bak \
+            "s#^([[:space:]]*image:[[:space:]]+${IMAGE})(@sha256:[a-f0-9]+)?#\\1@${digest}#" \
+            "$compose"
+          rm -f "${compose}.bak"
+
+          if ! grep -Fqx "    image: ${IMAGE}@${digest}" "$compose"; then
+            echo "Compose image digest was not updated" >&2
+            exit 1
+          fi
+
+          docker compose -f "$compose" config -q
+
+      - name: Commit and push deployment manifest
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docker-compose.yml
+
+          if git diff --cached --quiet -- docker-compose.yml; then
+            echo "Deployment manifest already points at the built digest"
+            exit 0
+          fi
+
+          if [ "$(git diff --cached --name-only)" != "docker-compose.yml" ]; then
+            echo "Refusing to push files other than docker-compose.yml" >&2
+            git diff --cached --name-only >&2
+            exit 1
+          fi
+
+          git commit -m "chore(deploy): pin image ${{ steps.image.outputs.digest }} [skip ci]"
+          git push origin "HEAD:${DEPLOY_BRANCH}"
