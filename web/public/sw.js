@@ -10,6 +10,18 @@
  */
 const SHELL = 'dworkspace-shell-v1';
 
+// How long a navigation waits for the network before the cached shell is used
+// instead. Long enough that an ordinary slow load still comes from the network
+// and nobody sees a stale shell for a hiccup — measured navigations answer in
+// 0.15–0.5s — and short enough that a stall is not something you sit through.
+const SHELL_TIMEOUT_MS = 3000;
+
+// A sentinel rather than null or undefined: caches.match() resolves to
+// undefined on a miss and fetch() can legitimately resolve to a falsy-looking
+// value in no case that matters, but mixing the two makes the race below
+// unreadable. This value can only have come from the timeout or a failure.
+const SLOW = Symbol('slow');
+
 self.addEventListener('install', (e) => {
   self.skipWaiting();
 });
@@ -46,16 +58,35 @@ self.addEventListener('fetch', (e) => {
   // only ever store a genuine React-app navigation there.
   if (e.request.mode === 'navigate') {
     const isServerDoc = /^\/(public|ics|api|files|collab|mcp)(\/|$)/.test(url.pathname);
+    const network = fetch(e.request)
+      .then((res) => {
+        if (res.ok && !isServerDoc) {
+          const copy = res.clone();
+          caches.open(SHELL).then((c) => c.put('/', copy));
+        }
+        return res;
+      });
+    // A network that FAILS falls back to the cached shell; a network that is
+    // merely slow used to fall back to nothing, because .catch() never fires
+    // for a request that is still in flight. Opening a document was observed
+    // taking 41 seconds on a stalled connection — the whole of it spent on this
+    // one fetch, with a perfectly good shell sitting in the cache unused and
+    // every API call beside it answering in under 200ms.
+    //
+    // So slow is treated as a kind of failure. The fetch is not aborted: it
+    // goes on to refresh the cache, so the next load is current either way.
+    //
+    // Only app-shell navigations are raced. A share page or an ICS feed is a
+    // different document that happens to be slow, and cutting it short to serve
+    // the app shell instead would answer the wrong question — those keep the
+    // behaviour they had, where only an outright failure falls back.
     e.respondWith(
-      fetch(e.request)
-        .then((res) => {
-          if (res.ok && !isServerDoc) {
-            const copy = res.clone();
-            caches.open(SHELL).then((c) => c.put('/', copy));
-          }
-          return res;
-        })
-        .catch(() => caches.match('/')),
+      isServerDoc
+        ? network.catch(() => caches.match('/'))
+        : Promise.race([
+            network.catch(() => SLOW),
+            new Promise((resolve) => setTimeout(() => resolve(SLOW), SHELL_TIMEOUT_MS)),
+          ]).then((res) => (res === SLOW ? caches.match('/').then((hit) => hit || network) : res)),
     );
   }
   // Everything else: default (network) — deliberately not cached.
