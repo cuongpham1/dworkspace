@@ -136,6 +136,11 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	if err := s.migrateFileIndex(); err != nil {
 		return nil, err
 	}
+	// Page history, compressed once (revisions_store.go). Same shape as the two
+	// above: a version in app_settings, a single pass, then never again.
+	if err := s.compressRevisions(); err != nil {
+		return nil, err
+	}
 	// Size the expensive work to the machine we are actually on, and log what
 	// we concluded — an admin wondering why a PDF is not searchable should
 	// find the answer in the startup lines, not by reading the source.

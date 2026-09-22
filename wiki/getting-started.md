@@ -128,19 +128,20 @@ An admin can also switch on automatic HTTPS from the settings dialog, which
 takes over ports 80 and 443 and fetches its own certificate —
 [Domain and HTTPS](domain.md).
 
-The binary answers four subcommands without starting a server at all:
+The binary answers five subcommands without starting a server at all:
 
 | Command | Does |
 | --- | --- |
 | `dworkspace version` | prints the version and exits |
 | `dworkspace backup <file.tar.gz>` | writes a consistent snapshot of database and uploads |
 | `dworkspace restore <file.tar.gz>` | unpacks one into the data directory — it refuses when a `dworkspace.db` is already there, unless `DWORKSPACE_RESTORE_FORCE=1` is set |
+| `dworkspace compact [--empty-trash]` | reports where the database size is going and rewrites the file to release free space; `--empty-trash` also deletes everything in the trash permanently |
 | `dworkspace fix-notion-rows` | strips the repeated title-and-properties preamble Notion writes into every exported row, from rows already imported, and reports how many it cleaned |
 
 `dworkspace backup` is safe against a running instance — it takes a transactionally
 consistent snapshot rather than copying files, so nothing is caught mid-write.
-`dworkspace restore` and `dworkspace fix-notion-rows` take the database for themselves; stop
-the server before either.
+`dworkspace restore`, `dworkspace compact` and `dworkspace fix-notion-rows` take the database
+for themselves; stop the server before any of them.
 
 **It is `dworkspace version`, not `dworkspace --version`.** An unrecognised argument is not
 an error — the program falls through and starts a server, which on a machine

@@ -57,6 +57,26 @@ func main() {
 		case "version":
 			fmt.Println(server.Version)
 			return
+		case "compact":
+			// Where the database size is going, and the two things that get it
+			// back. Run with the server stopped: it takes the sole SQLite
+			// connection and VACUUM rewrites the whole file.
+			//
+			// --empty-trash is spelled out because it is not a cleanup: it
+			// permanently deletes pages their owners can still restore today.
+			emptyTrash := false
+			for _, a := range os.Args[2:] {
+				switch a {
+				case "--empty-trash":
+					emptyTrash = true
+				default:
+					log.Fatalf("usage: dworkspace compact [--empty-trash] (unknown option %q)", a)
+				}
+			}
+			if err := server.CompactDB(dataDir, emptyTrash); err != nil {
+				log.Fatalf("compact: %v", err)
+			}
+			return
 		case "fix-notion-rows":
 			// One-time: strip Notion's repeated "# title + Property: value"
 			// preamble from existing database-row bodies (run with the server

@@ -151,14 +151,31 @@ func blockPlainText(blk mdBlock) string {
 	return strings.TrimSpace(b.String())
 }
 
+// deleteChunkIndex takes passages out of the full-text index.
+//
+// where is a condition on page_chunks ("page_id = ?", "workspace_id = ?", …)
+// and MUST select exactly the rows that are about to disappear, because this
+// has to run FIRST: chunks_fts is an external-content table (see
+// searchTablesDDL) and can only forget a row while that row is still readable
+// in page_chunks. Deleting the content first leaves the terms behind forever,
+// pointing at a seq that no longer resolves — a hit the search cannot show.
+//
+// The 'delete' keyword in the first column is FTS5's own syntax for "un-index
+// this rowid, and here are the values you indexed for it"; it cannot look them
+// up itself any more, which is the whole point of not storing them twice.
+func deleteChunkIndex(x sqlSchemaExecutor, where string, args ...any) error {
+	_, err := x.Exec(`INSERT INTO chunks_fts(chunks_fts, rowid, title, heading, text)
+		SELECT 'delete', seq, title, heading, text FROM page_chunks WHERE `+where, args...)
+	return err
+}
+
 // reindexChunks rewrites the passages of a page.
 //
-// Runs in the same breath as reindexPage. The delete path needs nothing of its
-// own: page_chunks hangs off pages by foreign key, and chunks_fts is carried
-// along here (a virtual table knows no cascade).
+// Runs in the same breath as reindexPage. page_chunks hangs off pages by
+// foreign key; chunks_fts is carried along by hand, because a virtual table
+// knows no cascade.
 func (s *Server) reindexChunks(pageID, workspaceID, title string, content []byte, trashed bool) error {
-	if _, err := s.db.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
-		(SELECT id FROM page_chunks WHERE page_id = ?)`, pageID); err != nil {
+	if err := deleteChunkIndex(s.db, `page_id = ?`, pageID); err != nil {
 		return err
 	}
 	if _, err := s.db.Exec(`DELETE FROM page_chunks WHERE page_id = ?`, pageID); err != nil {
@@ -177,16 +194,22 @@ func (s *Server) reindexChunks(pageID, workspaceID, title string, content []byte
 		chunks = []pageChunk{{Ord: 0, Text: title}}
 	}
 	for _, c := range chunks {
-		id := newID()
-		if _, err := s.db.Exec(`INSERT INTO page_chunks (id, page_id, workspace_id, ord, heading, text)
-			VALUES (?, ?, ?, ?, ?, ?)`, id, pageID, workspaceID, c.Ord, c.Heading, c.Text); err != nil {
-			return err
-		}
 		// The title goes into every passage: otherwise a two-word German query
 		// finds nothing when one word is in the title and the other in the
 		// paragraph — i18n-ok: "Vertrag Kündigung" is the example that showed it.
-		if _, err := s.db.Exec(`INSERT INTO chunks_fts (chunk_id, title, heading, text) VALUES (?, ?, ?, ?)`,
-			id, title, c.Heading, c.Text); err != nil {
+		// It is stored here rather than only in the index because the index no
+		// longer keeps a copy of anything (see searchTablesDDL).
+		res, err := s.db.Exec(`INSERT INTO page_chunks (page_id, workspace_id, ord, title, heading, text)
+			VALUES (?, ?, ?, ?, ?, ?)`, pageID, workspaceID, c.Ord, title, c.Heading, c.Text)
+		if err != nil {
+			return err
+		}
+		seq, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		if _, err := s.db.Exec(`INSERT INTO chunks_fts (rowid, title, heading, text) VALUES (?, ?, ?, ?)`,
+			seq, title, c.Heading, c.Text); err != nil {
 			return err
 		}
 	}

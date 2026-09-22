@@ -72,9 +72,10 @@ func (s *Server) purgeWorkspace(wsID string) error {
 		return err
 	}
 	// chunks_fts by hand as well: virtual tables know no cascade. page_chunks
-	// itself hangs off a foreign key and falls with the pages.
-	if _, err := tx.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
-		(SELECT id FROM page_chunks WHERE workspace_id = ?)`, wsID); err != nil {
+	// itself hangs off a foreign key and falls with the pages — but the index
+	// has to be told first, while the rows it indexed are still readable (see
+	// deleteChunkIndex).
+	if err := deleteChunkIndex(tx, `workspace_id = ?`, wsID); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM page_chunks WHERE workspace_id = ?`, wsID); err != nil {
@@ -127,13 +128,19 @@ func (s *Server) removeUnreferencedFiles(refs map[string]bool) {
 		// to the file, and a profile picture lives in the same directory.
 		// Without these three queries the clean-up left a dead image inside a
 		// restorable version of SOMEBODY ELSE'S page.
+		//
+		// A revision is stored compressed (revisions_store.go), and a gzip blob
+		// matches no LIKE pattern — so the question is asked of the assets
+		// column, which keeps that revision's file references in the clear for
+		// exactly this. Both columns are consulted: rows written before
+		// compression existed still carry their references in content.
 		var elsewhere int
 		s.db.QueryRow(`SELECT
-			(SELECT COUNT(*) FROM page_revisions WHERE content LIKE ?) +
+			(SELECT COUNT(*) FROM page_revisions WHERE content LIKE ? OR assets LIKE ?) +
 			(SELECT COUNT(*) FROM comments WHERE body LIKE ?) +
 			(SELECT COUNT(*) FROM workspaces WHERE image LIKE ?) +
 			(SELECT COUNT(*) FROM users WHERE avatar LIKE ?)`,
-			like, like, like, like).Scan(&elsewhere)
+			like, like, like, like, like).Scan(&elsewhere)
 		if elsewhere > 0 {
 			continue
 		}

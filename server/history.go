@@ -36,8 +36,11 @@ func (s *Server) snapshotRevision(pageID, authorID, authorName string) {
 	if strings.TrimSpace(content) == "" || content == "[]" {
 		return // don't snapshot an empty doc
 	}
-	s.db.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		newID(), pageID, now(), authorID, authorName, title, content)
+	// Stored compressed where that pays — see revisions_store.go.
+	stored, gz, assets := encodeRevision(content)
+	s.db.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content, content_gz, assets)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		newID(), pageID, now(), authorID, authorName, title, stored, gz, assets)
 	// Prune to the newest revisionKeep for this page.
 	s.db.Exec(`DELETE FROM page_revisions WHERE page_id = ? AND id NOT IN (
 		SELECT id FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC LIMIT ?)`, pageID, pageID, revisionKeep)
@@ -79,7 +82,8 @@ func (s *Server) handleGetRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var title, content, createdAt, author string
-	err := s.db.QueryRow(`SELECT title, content, created_at, author_name FROM page_revisions WHERE id = ? AND page_id = ?`, r.PathValue("revId"), pageID).Scan(&title, &content, &createdAt, &author)
+	var gz []byte
+	err := s.db.QueryRow(`SELECT title, content, content_gz, created_at, author_name FROM page_revisions WHERE id = ? AND page_id = ?`, r.PathValue("revId"), pageID).Scan(&title, &content, &gz, &createdAt, &author)
 	if err == sql.ErrNoRows {
 		httpError(w, 404, "revision not found")
 		return
@@ -89,7 +93,7 @@ func (s *Server) handleGetRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{
-		"title": title, "content": json.RawMessage(content), "createdAt": createdAt, "authorName": author,
+		"title": title, "content": json.RawMessage(decodeRevision(content, gz)), "createdAt": createdAt, "authorName": author,
 	})
 }
 
@@ -104,7 +108,8 @@ func (s *Server) handleRestoreRevision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var content string
-	err := s.db.QueryRow(`SELECT content FROM page_revisions WHERE id = ? AND page_id = ?`, r.PathValue("revId"), pageID).Scan(&content)
+	var gz []byte
+	err := s.db.QueryRow(`SELECT content, content_gz FROM page_revisions WHERE id = ? AND page_id = ?`, r.PathValue("revId"), pageID).Scan(&content, &gz)
 	if err == sql.ErrNoRows {
 		httpError(w, 404, "revision not found")
 		return
@@ -113,6 +118,7 @@ func (s *Server) handleRestoreRevision(w http.ResponseWriter, r *http.Request) {
 		httpError(w, 500, err.Error())
 		return
 	}
+	content = decodeRevision(content, gz)
 	// Capture the pre-restore state first so a restore can be undone.
 	s.snapshotRevision(pageID, u.ID, u.Name)
 	if _, err := s.db.Exec(`UPDATE pages SET content = ?, updated_at = ? WHERE id = ?`, content, now(), pageID); err != nil {

@@ -825,10 +825,9 @@ func TestProposalPublishIsAtomicAndUndoable(t *testing.T) {
 	if status != proposalStatusPublished || !strings.Contains(content, "after") {
 		t.Fatalf("published state = %q content=%q", status, content)
 	}
-	var revisions int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM page_revisions WHERE page_id = ? AND content LIKE '%before%'`, page).Scan(&revisions); err != nil {
-		t.Fatal(err)
-	}
+	// Read through decodeRevision: the content column is compressed above a
+	// size threshold, so a LIKE over it answers by accident of length.
+	revisions := revisionsContaining(t, s, page, "before")
 	if revisions != 1 {
 		t.Fatal("publish did not snapshot the canonical state")
 	}
@@ -1168,10 +1167,7 @@ func TestWorkspaceAdminReplaceContentAppliesImmediatelyAndKeepsRevision(t *testi
 	if !strings.Contains(content, "after") {
 		t.Fatalf("admin replace did not update the canonical page immediately: %q", content)
 	}
-	var revisions int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM page_revisions WHERE page_id = ? AND content LIKE '%before%'`, page).Scan(&revisions); err != nil {
-		t.Fatal(err)
-	}
+	revisions := revisionsContaining(t, s, page, "before")
 	if revisions != 1 {
 		t.Fatalf("admin replace did not keep the previous version as a revision: %d", revisions)
 	}

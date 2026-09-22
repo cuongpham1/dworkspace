@@ -992,9 +992,9 @@ func (s *Server) handleDeletePage(w http.ResponseWriter, r *http.Request) {
 		}
 		// chunks_fts is virtual and knows no cascade — otherwise the passages of the
 		// deleted pages would stay in the search index and return hits on text that
-		// no longer exists.
-		if _, err := tx.Exec(`DELETE FROM chunks_fts WHERE chunk_id IN
-			(SELECT id FROM page_chunks WHERE page_id IN (`+placeholders(len(ids))+`))`, idArgs...); err != nil {
+		// no longer exists. Before the DELETE below, never after: the index reads
+		// page_chunks to forget a row (see deleteChunkIndex).
+		if err := deleteChunkIndex(tx, `page_id IN (`+placeholders(len(ids))+`)`, idArgs...); err != nil {
 			httpError(w, 500, err.Error())
 			return
 		}
@@ -1195,13 +1195,13 @@ func (s *Server) searchChunks(userID, match string, ws []string, want int) []sea
 		qArgs := append([]any{}, args...)
 		rows, err := s.db.Query(`
 			SELECT c.page_id, p.title, p.icon, c.heading,
-			       snippet(chunks_fts, 3, char(1), char(2), '…', 18)
+			       snippet(chunks_fts, 2, char(1), char(2), '…', 18)
 			FROM chunks_fts
-			JOIN page_chunks c ON c.id = chunks_fts.chunk_id
+			JOIN page_chunks c ON c.seq = chunks_fts.rowid
 			JOIN pages p ON p.id = c.page_id
 			WHERE chunks_fts MATCH ? AND p.trashed_at IS NULL
 			  AND c.workspace_id IN (`+placeholders(len(ws))+`)
-			ORDER BY bm25(chunks_fts, 0.0, 5.0, 3.0, 1.0)
+			ORDER BY bm25(chunks_fts, 5.0, 3.0, 1.0)
 			LIMIT 60 OFFSET `+strconv.Itoa(offset), qArgs...)
 		if err != nil {
 			// Swallowing this is how a malformed MATCH pattern shipped twice:

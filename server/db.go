@@ -29,23 +29,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS pages_fts USING fts5(
 	id UNINDEXED, title, body,
 	tokenize = "unicode61 remove_diacritics 2"
 );
--- Passages of a page (W110): the search unit below the page. Hangs off pages
--- by cascade; chunks_fts is carried along by hand, because a virtual table
--- knows no foreign keys.
-CREATE TABLE IF NOT EXISTS page_chunks (
-	id TEXT PRIMARY KEY,
-	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
-	workspace_id TEXT NOT NULL DEFAULT '',
-	ord INTEGER NOT NULL DEFAULT 0,
-	heading TEXT NOT NULL DEFAULT '',
-	text TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_chunk_page ON page_chunks(page_id);
-CREATE INDEX IF NOT EXISTS idx_chunk_ws ON page_chunks(workspace_id);
-CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
-	chunk_id UNINDEXED, title, heading, text,
-	tokenize = "unicode61 remove_diacritics 2"
-);
+-- page_chunks and chunks_fts live in searchTablesDDL below, because the
+-- migration has to be able to drop and rebuild them.
 CREATE TABLE IF NOT EXISTS settings (
 	key TEXT PRIMARY KEY,
 	value TEXT NOT NULL
@@ -304,7 +289,12 @@ CREATE TABLE IF NOT EXISTS page_revisions (
 	author_id TEXT NOT NULL DEFAULT '',
 	author_name TEXT NOT NULL DEFAULT '',
 	title TEXT NOT NULL DEFAULT '',
-	content TEXT NOT NULL
+	-- Exactly one of the two holds the snapshot; assets carries its file
+	-- references in the clear because a gzip blob cannot be searched with LIKE.
+	-- See revisions_store.go for all three.
+	content TEXT NOT NULL,
+	content_gz BLOB,
+	assets TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_rev_page ON page_revisions(page_id, created_at);
 CREATE TABLE IF NOT EXISTS page_change_proposals (
@@ -458,6 +448,50 @@ CREATE TABLE IF NOT EXISTS comment_mentions (
 CREATE INDEX IF NOT EXISTS idx_comment_mention_user ON comment_mentions(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_comment_mention_comment ON comment_mentions(comment_id);
 `
+
+// searchTablesDDL holds the passage store (W110) and its full-text index.
+//
+// Separate from schema because migrateSearchIndex has to DROP and re-create
+// both — CREATE TABLE IF NOT EXISTS cannot change the shape of a table that is
+// already there, and every column below has changed at least once.
+//
+// chunks_fts is an EXTERNAL CONTENT table (content = 'page_chunks'): FTS5 keeps
+// the inverted index only and reads the text back out of page_chunks whenever
+// it needs the words themselves, which is once per result for snippet(). A
+// plain fts5 table keeps its own verbatim copy of everything handed to it — on
+// the instance this was measured against, 76 MB of text that already existed
+// one table over, and the THIRD copy of every page after pages.content and
+// page_chunks.text. Nothing about search behaviour changes; the same bytes are
+// simply read from one place instead of two.
+//
+// The price is that FTS5 no longer knows what it indexed. A row must leave the
+// index BEFORE it leaves page_chunks, and its old values have to be handed back
+// with the deletion — otherwise the index silently keeps terms pointing at a
+// row that is gone, and the next search returns a hit that cannot be resolved.
+// deleteChunkIndex (chunks.go) is the single place that gets this right; every
+// delete path goes through it.
+//
+// seq is an EXPLICIT INTEGER PRIMARY KEY rather than the implicit rowid. VACUUM
+// may renumber implicit rowids, and backup.go runs VACUUM INTO on every backup
+// — an implicit rowid would have disconnected the index from its content in
+// exactly the copy somebody restores from.
+const searchTablesDDL = `
+CREATE TABLE IF NOT EXISTS page_chunks (
+	seq INTEGER PRIMARY KEY,
+	page_id TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+	workspace_id TEXT NOT NULL DEFAULT '',
+	ord INTEGER NOT NULL DEFAULT 0,
+	title TEXT NOT NULL DEFAULT '',
+	heading TEXT NOT NULL DEFAULT '',
+	text TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chunk_page ON page_chunks(page_id);
+CREATE INDEX IF NOT EXISTS idx_chunk_ws ON page_chunks(workspace_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+	title, heading, text,
+	content = 'page_chunks', content_rowid = 'seq',
+	tokenize = "unicode61 remove_diacritics 2"
+);`
 
 // ensureColumn adds a column to an existing table if it is missing
 // (SQLite has no ADD COLUMN IF NOT EXISTS).
@@ -669,6 +703,11 @@ func openDB(path string) (*sql.DB, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
+	// Creates them only on a fresh database; an existing one is reshaped by
+	// migrateSearchIndex, which drops these two and runs the same DDL again.
+	if _, err := db.Exec(searchTablesDDL); err != nil {
+		return nil, fmt.Errorf("migrate search tables: %w", err)
+	}
 	if err := migrateProposalTable(db); err != nil {
 		return nil, fmt.Errorf("migrate proposals: %w", err)
 	}
@@ -768,6 +807,15 @@ func openDB(path string) (*sql.DB, error) {
 	}
 	if err := ensureColumn(db, "pages", "thumb", `thumb TEXT NOT NULL DEFAULT ''`); err != nil {
 		return nil, fmt.Errorf("migrate pages.thumb: %w", err)
+	}
+	// Compressed page history (revisions_store.go). Both columns have to exist
+	// before anything reads the table — the read path selects content_gz
+	// unconditionally, and the upload cleanup selects assets.
+	if err := ensureColumn(db, "page_revisions", "content_gz", `content_gz BLOB`); err != nil {
+		return nil, fmt.Errorf("migrate page_revisions.content_gz: %w", err)
+	}
+	if err := ensureColumn(db, "page_revisions", "assets", `assets TEXT NOT NULL DEFAULT ''`); err != nil {
+		return nil, fmt.Errorf("migrate page_revisions.assets: %w", err)
 	}
 	// API token workspace scope (empty = all the user's workspaces; else a
 	// comma-separated allow-list of workspace ids the token may reach).

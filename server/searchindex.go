@@ -36,7 +36,7 @@ import (
 
 // ftsVersion is the version this build expects. Raise it whenever the
 // tokenizer line or the column layout changes.
-const ftsVersion = "3"
+const ftsVersion = "4"
 
 // foldQuery folds a search term exactly the way the index does.
 //
@@ -176,10 +176,20 @@ func (s *Server) migrateSearchIndex() error {
 	if _, err := s.db.Exec(`DROP TABLE IF EXISTS pages_fts`); err != nil {
 		return err
 	}
-	// Version 3: the passages join in. Both indexes are filled by reindexPage,
-	// so emptying them is enough.
-	s.db.Exec(`DELETE FROM chunks_fts`)
-	s.db.Exec(`DELETE FROM page_chunks`)
+	// Version 4: chunks_fts became an external-content table and page_chunks
+	// grew the title column it now has to supply (see searchTablesDDL). Emptying
+	// no longer suffices — the shape of both changed, so both are dropped and
+	// rebuilt from scratch. chunks_fts first: dropping the content table out
+	// from under an external-content index leaves it unreadable.
+	if _, err := s.db.Exec(`DROP TABLE IF EXISTS chunks_fts`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DROP TABLE IF EXISTS page_chunks`); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(searchTablesDDL); err != nil {
+		return err
+	}
 	if _, err := s.db.Exec(`CREATE VIRTUAL TABLE pages_fts USING fts5(
 		id UNINDEXED, title, body,
 		tokenize = "unicode61 remove_diacritics 2"

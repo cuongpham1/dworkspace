@@ -177,11 +177,12 @@ The binary takes a handful of subcommands before it decides to be a server:
 | `dworkspace backup [file]` | write a consistent archive (default `dworkspace-backup.tar.gz`) |
 | `dworkspace restore <file>` | unpack an archive into the data directory |
 | `dworkspace version` | print the version and exit |
+| `dworkspace compact [--empty-trash]` | report where the database size is going, then rewrite the file to give the free space back |
 | `dworkspace fix-notion-rows` | one-time cleanup of Notion-imported row bodies |
 
 Three things about this list are easy to get wrong.
 
-**Only those four words are subcommands.** Anything else — including
+**Only those five words are subcommands.** Anything else — including
 `dworkspace --version` — is not recognised, and the process goes on to **start a
 server**. On a machine where the service is already running that means a second
 instance on the same port, and a command that never returns. Read the version
@@ -192,8 +193,9 @@ the same `DWORKSPACE_DATA` as the service looks in `./data`, finds nothing, and 
 with "no database at …". A systemd unit's `Environment=` lines are not inherited
 by your shell, so set the variable on every command line.
 
-**Only two of them need the server stopped.** `fix-notion-rows` opens the
-database directly and takes its single connection. `restore` needs it stopped
+**Only three of them need the server stopped.** `fix-notion-rows` and `compact`
+open the database directly and take its single connection; `compact` also
+rewrites the entire file. `restore` needs it stopped
 for a different reason: a running server holds `dworkspace.db` open and keeps writing
 to the very file the archive is replacing. `backup` is designed to run beside a
 live instance, and `version` touches nothing.
@@ -260,9 +262,52 @@ same bytes uploaded twice are two files on disk. The name a person gave the file
 lives in the database, not on disk — see [Files](files.md).
 
 The database runs in WAL mode on a **single connection**. That is why
-`fix-notion-rows` and `restore` want the server stopped while `backup` can run
-beside it, and why a recent change may be sitting in `dworkspace.db-wal` rather than
+`fix-notion-rows`, `compact` and `restore` want the server stopped while `backup`
+can run beside it, and why a recent change may be sitting in `dworkspace.db-wal` rather than
 in `dworkspace.db` — see [Backing up](#backing-up).
+
+## How big the database gets
+
+Larger than the text in it, and the gap is wider than most people expect. An
+instance with 22 people and 2,482 live pages held 43 MB of written text in a
+564 MB file. That ratio is normal, and almost none of it is waste you can point
+at from the outside — it is deleted pages still inside the retention window,
+version history, and a search index.
+
+`dworkspace compact` prints the breakdown rather than making you guess:
+
+```
+$ DWORKSPACE_DATA=/srv/dworkspace ./dworkspace compact
+
+Before — 271.2 MB on disk
+  live pages          2482   42.7 MB   ← what people wrote
+  in the trash        1307   80.4 MB
+  revisions           3795   13.6 MB
+  search passages            15.7 MB
+  pending CRDT log           40.5 MB
+```
+
+Then it runs `VACUUM`. SQLite never shrinks a file on its own: deleted rows free
+pages for **reuse**, which is why the file stops growing but does not get
+smaller. Most of the time that is the right behaviour and `compact` has nothing
+to give back. After a large import went wrong, or a bulk delete, it does.
+
+`--empty-trash` is the one part that destroys something. It permanently deletes
+everything in the trash **now**, rather than waiting out `DWORKSPACE_TRASH_DAYS`
+— including pages somebody could still restore this afternoon. It is a separate
+flag because there is no sensible default for that decision.
+
+Three things keep the file small without anyone doing anything:
+
+- **The trash empties itself** after 30 days (`DWORKSPACE_TRASH_DAYS`).
+- **Version history is stored compressed.** BlockNote JSON compresses about
+  7:1; the 50 revisions kept per page cost a seventh of what they look like.
+- **The search index keeps no copy of the text.** It reads the words back out
+  of the passage table when it needs them for a snippet.
+
+What does *not* shrink on its own is `pages` itself, and it should not: that is
+the documents. If the number bothers you, the honest place to look is the
+`live pages` line — everything else is mechanics.
 
 ## Memory, and what it changes
 

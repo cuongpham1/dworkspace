@@ -972,7 +972,10 @@ func (s *Server) applyProposedEditTx(tx *sql.Tx, u *user, p pageChangeProposal, 
 	if currentHash != p.BaseHash && !legacyHash {
 		return errProposalConflict
 	}
-	if _, err := tx.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)`, newID(), pageID, ts, u.ID, u.Name, title, content); err != nil {
+	// Compressed where that pays, like every other revision — see revisions_store.go.
+	stored, gz, assets := encodeRevision(content)
+	if _, err := tx.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content, content_gz, assets)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, newID(), pageID, ts, u.ID, u.Name, title, stored, gz, assets); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM page_revisions WHERE page_id = ? AND id NOT IN (SELECT id FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC LIMIT ?)`, pageID, pageID, revisionKeep); err != nil {

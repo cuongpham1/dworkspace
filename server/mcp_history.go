@@ -82,12 +82,13 @@ func (s *Server) mcpPageHistory(pageID string, limit int) (string, error) {
 // version, compare the changes" — without altering anything.
 func (s *Server) mcpGetRevision(pageID, revID string) (string, error) {
 	var title, content, createdAt, author string
-	err := s.db.QueryRow(`SELECT title, content, created_at, author_name FROM page_revisions
-		WHERE id = ? AND page_id = ?`, revID, pageID).Scan(&title, &content, &createdAt, &author)
+	var gz []byte
+	err := s.db.QueryRow(`SELECT title, content, content_gz, created_at, author_name FROM page_revisions
+		WHERE id = ? AND page_id = ?`, revID, pageID).Scan(&title, &content, &gz, &createdAt, &author)
 	if err != nil {
 		return "", fmt.Errorf("revision %q not found on page %s", revID, pageID)
 	}
-	md := "# " + title + "\n\n" + blocksToMarkdown([]byte(content))
+	md := "# " + title + "\n\n" + blocksToMarkdown([]byte(decodeRevision(content, gz)))
 	b, err := json.Marshal(map[string]any{
 		"page_id": pageID, "revision_id": revID, "created_at": createdAt,
 		"author": author, "title": title, "markdown": md,
@@ -100,11 +101,12 @@ func (s *Server) mcpGetRevision(pageID, revID string) (string, error) {
 
 func (s *Server) mcpRestoreRevision(u *user, pageID, revID string) (string, error) {
 	var title, content string
-	if err := s.db.QueryRow(`SELECT title, content FROM page_revisions WHERE id = ? AND page_id = ?`,
-		revID, pageID).Scan(&title, &content); err != nil {
+	var gz []byte
+	if err := s.db.QueryRow(`SELECT title, content, content_gz FROM page_revisions WHERE id = ? AND page_id = ?`,
+		revID, pageID).Scan(&title, &content, &gz); err != nil {
 		return "", fmt.Errorf("revision %q not found on page %s", revID, pageID)
 	}
-	return s.mcpCreatePageChangeProposal(u, pageID, content,
+	return s.mcpCreatePageChangeProposal(u, pageID, decodeRevision(content, gz),
 		title, fmt.Sprintf("Agent proposed restoring revision %s.", revID))
 }
 
