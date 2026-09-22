@@ -1,0 +1,15 @@
+# Deploy with:  npx wrangler deploy        (from this directory)
+# Tail logs:    npx wrangler tail
+#
+# The resulting hostname is https://<name>.<your-account>.workers.dev — the
+# account subdomain is chosen once per Cloudflare account, under
+# Workers & Pages → Subdomain.
+
+name = "vuonuom"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Logs are off unless asked for, and a proxy with no logs is a proxy you cannot
+# debug when someone reports "it just spins".
+[observability]
+enabled = true
