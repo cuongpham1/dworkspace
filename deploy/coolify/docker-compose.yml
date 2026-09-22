@@ -69,4 +69,10 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      # Generous, because the listener does not open until every startup
+      # migration has finished, and one of them can rebuild the entire search
+      # index: a release that changes ftsVersion re-indexes every page before
+      # answering anything (2,482 pages took ~30s on a laptop, longer on a small
+      # ARM instance). At the old 15s an ordinary upgrade would have been marked
+      # unhealthy, restarted, and started the same rebuild again from the top.
+      start_period: 300s
