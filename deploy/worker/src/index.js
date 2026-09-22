@@ -16,9 +16,111 @@
 
 const ORIGIN = "vuonuom.coolify.tuoitre.fun";
 
+// Google will not switch an OAuth app to external production without a
+// reachable home page and privacy policy. The app itself has neither: every
+// path behind "/" is the workspace, and its front door is a login form, which
+// describes nothing to somebody who is not a member yet.
+//
+// Serving them here rather than adding them to the app keeps two unrelated
+// things apart. These pages exist for one console form; they are not a feature
+// of the workspace, and they must stay reachable even when the origin is down —
+// which is exactly when a reviewer is most likely to be looking.
+//
+// Both paths currently fall through to the SPA catch-all, so nothing is being
+// shadowed. If the app ever grows a real /about or /privacy, these win and
+// would have to move.
+const PAGES = {
+  "/about": {
+    title: "About this workspace",
+    body: `
+      <p>This is a private, self-hosted instance of
+      <strong>dworkspace</strong> — a workspace for notes, documents and
+      structured pages, used by one team.</p>
+
+      <p>It is not a public service and has no open registration for the
+      general public. Accounts belong to people the operator of this instance
+      has admitted.</p>
+
+      <h2>Signing in</h2>
+      <p>An account signs in with an email address and password, or with
+      Google. Signing in with Google requests only the
+      <code>openid</code>, <code>email</code> and <code>profile</code> scopes:
+      enough to learn which account you are. It grants no access to Gmail,
+      Drive, Calendar or contacts.</p>
+
+      <p><a href="/privacy">Privacy policy</a></p>`,
+  },
+  "/privacy": {
+    title: "Privacy policy",
+    body: `
+      <h2>What this instance stores</h2>
+      <p>The content you create here — pages, documents, uploads, comments —
+      is stored on a server operated privately by this instance's
+      administrator. It is not sent to a third-party service.</p>
+
+      <h2>What Google sign-in provides</h2>
+      <p>When you choose to sign in with Google, Google returns your email
+      address, your name and your profile picture. The email address is the
+      only thing used to decide which account you are: it is matched against
+      existing accounts on this instance.</p>
+
+      <p>The requested scopes are <code>openid</code>, <code>email</code> and
+      <code>profile</code> and nothing else. This instance cannot read your
+      mail, your files, your calendar or your contacts, and does not ask to.
+      No Google token is kept after sign-in completes; the session that follows
+      is issued by this instance itself.</p>
+
+      <h2>Who can see your content</h2>
+      <p>Other members of a workspace you belong to, and the administrators of
+      this instance, who by the nature of running the server can reach the
+      underlying data.</p>
+
+      <h2>Sharing</h2>
+      <p>Content is not sold, and is not passed to advertisers or data
+      brokers.</p>
+
+      <h2>Removal</h2>
+      <p>To have an account and its content removed, ask the administrator of
+      this instance. Because the instance is self-hosted, that request is
+      handled by them directly rather than by any third party.</p>
+
+      <p><a href="/about">About this workspace</a></p>`,
+  },
+};
+
+function page({ title, body }) {
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0 auto; padding: 3rem 1.25rem 6rem; max-width: 42rem;
+         font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 1.6rem; margin-bottom: 1.5rem; }
+  h2 { font-size: 1.05rem; margin-top: 2rem; }
+  code { font-size: 0.9em; }
+  a { color: inherit; }
+</style></head><body><h1>${title}</h1>${body}</body></html>`,
+    {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        // Short, not immutable: these are edited by redeploying the Worker, and
+        // a reviewer reloading after a correction should see the correction.
+        "cache-control": "public, max-age=300",
+      },
+    },
+  );
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
+
+    const known = PAGES[url.pathname];
+    if (known && request.method === "GET") {
+      return page(known);
+    }
 
     // The hostname the browser actually typed. Captured before we rewrite the
     // URL, because that is the whole point of the exercise.
