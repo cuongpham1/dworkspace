@@ -26,6 +26,10 @@ func TestFoldedCapabilitiesSurvived(t *testing.T) {
 	uid, _ := signedIn(t, s, "folded@example.test")
 	u := &user{ID: uid, Name: "Test"}
 	ws := s.firstWorkspaceOf(t, uid)
+	// The final assertions in this test are about the update_page title-change
+	// gate, which only stays pending for a non-admin: signedIn's caller is a
+	// workspace admin, and an admin's title change now applies immediately.
+	s.demoteToMember(t, ws, uid)
 
 	parent := s.makePage(t, ws, uid, "", "Parent", `{}`)
 	child := s.makePage(t, ws, uid, parent, "Child", `{}`)
@@ -113,6 +117,7 @@ func TestCreateFromTemplateFoldedIntoCreatePage(t *testing.T) {
 	uid, _ := signedIn(t, s, "tmpl@example.test")
 	u := &user{ID: uid, Name: "Test"}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 
 	tmpl := s.makePage(t, ws, uid, "", "Weekly report", `{}`)
 	if _, err := s.db.Exec(`UPDATE pages SET is_template = 1 WHERE id = ?`, tmpl); err != nil {

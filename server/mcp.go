@@ -138,7 +138,7 @@ var mcpTools = []map[string]any{
 	},
 	{
 		"name":        "create_page",
-		"description": "Create a new canonical document proposal, optionally under a parent and with initial Markdown content. No page is created, indexed, or visible in the Documents tree until a human publishes the proposal in the review workspace. Cover, tags, description, deterministic fact constraints, and conservative related-document candidates can be included for human review.",
+		"description": "Create a new document, optionally under a parent and with initial Markdown content. If your account is an ADMIN of the target workspace the page exists straight away; otherwise it becomes a proposal and no page is created, indexed or visible in the Documents tree until a human publishes it in the review workspace. The answer tells you which happened. Cover, tags, description, deterministic fact constraints and conservative related-document candidates can be included either way.",
 		"inputSchema": map[string]any{"type": "object",
 			"properties": map[string]any{
 				"title":              map[string]any{"type": "string"},
@@ -1128,7 +1128,7 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 			}
 			input := proposalInput{ParentID: parent, WorkspaceID: workspaceID, Title: args.Title, Content: content,
 				Type: "doc", Icon: args.Icon, Cover: args.Cover, Description: args.Description, Props: "{}",
-				Tags: tags, Summary: "Agent proposed a new canonical document.", FactReview: factReview, RelatedCandidates: related}
+				Tags: tags, Summary: "Agent created a new document.", FactReview: factReview, RelatedCandidates: related}
 			if len(args.Properties) > 0 {
 				if !json.Valid(args.Properties) {
 					return "", fmt.Errorf("properties must be valid JSON")
@@ -1137,6 +1137,19 @@ func (s *Server) mcpCall(u *user, name string, rawArgs json.RawMessage, publicBa
 			}
 			if args.Summary != "" {
 				input.Summary = args.Summary
+			}
+			if s.agentBypassesReview(u.ID, workspaceID) {
+				p, err := s.createPageUngated(u, input)
+				if err != nil {
+					return "", err
+				}
+				s.audit("agent", u.ID, u.Name+" (MCP)", "create_page", p.PageID, workspaceID, p.ProposedTitle)
+				payload, err := s.mcpProposalPayload(p, "Page created directly: you are an admin of this workspace.")
+				if err != nil {
+					return "", err
+				}
+				b, err := json.Marshal(payload)
+				return string(b), err
 			}
 			p, err := s.createPageProposal(u, input)
 			if err != nil {

@@ -94,11 +94,30 @@ func (s *Server) mcpCreateFromTemplate(u *user, templateID, title string) (strin
 	if title == "" {
 		title = p.Title
 	}
-	proposal, err := s.createPageProposal(u, proposalInput{
+	// Follows the same rule as create_page: whether this waits for review is
+	// decided by WHO is asking, not by whether a template was named. Splitting on
+	// the template would have made the gate turn on a detail nobody could predict
+	// from the outside.
+	input := proposalInput{
 		WorkspaceID: p.WorkspaceID, Title: title, Content: string(p.Content), Type: p.Type,
 		Icon: p.Icon, Cover: p.Cover, Description: p.Description, Tags: p.Tags, Props: string(p.Props),
 		Summary: fmt.Sprintf("Agent proposed creating a document from template %s.", templateID),
-	})
+	}
+	if s.agentBypassesReview(u.ID, p.WorkspaceID) {
+		input.Summary = fmt.Sprintf("Agent created a document from template %s.", templateID)
+		created, err := s.createPageUngated(u, input)
+		if err != nil {
+			return "", err
+		}
+		s.audit("agent", u.ID, u.Name+" (MCP)", "create_page", created.PageID, p.WorkspaceID, title)
+		payload, err := s.mcpProposalPayload(created, "Page created from template directly: you are an admin of this workspace.")
+		if err != nil {
+			return "", err
+		}
+		b, err := json.Marshal(payload)
+		return string(b), err
+	}
+	proposal, err := s.createPageProposal(u, input)
 	if err != nil {
 		return "", err
 	}

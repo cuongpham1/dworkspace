@@ -20,6 +20,10 @@ func TestWriteContentDoesAllThreeModes(t *testing.T) {
 	uid, _ := signedIn(t, s, "write@example.test")
 	u := &user{ID: uid, Name: "Test"}
 	ws := s.firstWorkspaceOf(t, uid)
+	// A workspace admin's replace now applies immediately (see
+	// agentBypassesReview); this test is about the replace-stays-pending
+	// contract, so it needs a non-admin caller.
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Notes", `{}`)
 
 	body := func() string {
@@ -65,6 +69,11 @@ func TestRevisionsListGetRestore(t *testing.T) {
 	uid, _ := signedIn(t, s, "rev@example.test")
 	u := &user{ID: uid, Name: "Test"}
 	ws := s.firstWorkspaceOf(t, uid)
+	// restore is one of the gated edit entry points; a workspace admin's
+	// restore now applies immediately, so this non-admin caller is what keeps
+	// the assertion below ("restore did not create a pending proposal")
+	// meaningful.
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Doc", `{}`)
 
 	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, `[ {"type":"paragraph","content":[{"type":"text","text":"version one"}]} ]`, page); err != nil {

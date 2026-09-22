@@ -707,6 +707,153 @@ func appendRelatedPageLinks(content json.RawMessage, selected []string) (string,
 	return string(out), err
 }
 
+// applyEditUngated writes a proposed revision onto its page immediately, for a
+// caller that review would not have told anybody anything about — see
+// agentBypassesReview.
+//
+// The proposal row is written and then marked published rather than skipped, so
+// the page's history reads the same whether a person clicked Publish or an
+// admin's agent went straight through: same revision, same record, same diff to
+// look at afterwards.
+func (s *Server) applyEditUngated(u *user, p pageChangeProposal) (pageChangeProposal, error) {
+	if p.Kind != proposalKindEdit {
+		return pageChangeProposal{}, fmt.Errorf("expected an edit proposal, got %s", p.Kind)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return pageChangeProposal{}, err
+	}
+	defer tx.Rollback()
+
+	ts := now()
+	if err := s.applyProposedEditTx(tx, u, p, p.PageID, ts); err != nil {
+		return pageChangeProposal{}, err
+	}
+	if result, err := tx.Exec(`UPDATE page_change_proposals SET status = ?, updated_at = ?, published_at = ?, published_by = ? WHERE id = ? AND page_id = ? AND status = ?`,
+		proposalStatusPublished, ts, ts, u.ID, p.ID, p.PageID, proposalStatusPending); err != nil {
+		return pageChangeProposal{}, err
+	} else if n, _ := result.RowsAffected(); n != 1 {
+		return pageChangeProposal{}, fmt.Errorf("proposal is no longer pending")
+	}
+	if err := tx.Commit(); err != nil {
+		return pageChangeProposal{}, err
+	}
+
+	p.Status, p.UpdatedAt, p.PublishedAt, p.PublishedBy = proposalStatusPublished, ts, &ts, &u.ID
+	s.healProposalIndex(p.PageID)
+	s.resetYjsDoc(p.PageID)
+	s.rowChanged(p.PageID)
+	s.fireWebhook("page.updated", p.PageID)
+	s.pagesChanged()
+	return p, nil
+}
+
+// agentBypassesReview reports whether this caller's writes to this workspace
+// land directly instead of waiting for a person.
+//
+// One rule, not two: an admin of the workspace goes straight through, everybody
+// else is reviewed — for creating a document and for changing one alike. The
+// alternative on offer was to gate by ACT rather than by AUTHOR (creating free,
+// editing reviewed), and it read worse the longer you looked at it: importing a
+// Confluence space was unblocked, but an admin still had to approve their own
+// agent's every correction afterwards, and a member's brand-new document landed
+// with nobody having read it.
+//
+// What review is FOR is the reason: it exists so nothing enters this workspace
+// without somebody accountable having seen it. A workspace admin IS that
+// somebody. Asking them to approve their own agent's work is asking them to
+// review themselves, which is ceremony, not a check.
+//
+// The cost is real and worth naming: an API token is not a person. A token
+// belonging to an admin now writes without review, and if it leaks it writes
+// without review too. The human Publish path still refuses tokens outright
+// (publishPageChangeProposal); this bypass is deliberately confined to the MCP
+// entry points, so the browser review flow keeps meaning exactly what it did.
+func (s *Server) agentBypassesReview(userID, workspaceID string) bool {
+	if workspaceID == "" {
+		return false
+	}
+	return s.isWorkspaceAdmin(userID, workspaceID)
+}
+
+// createPageUngated writes a new document straight out, skipping the review a
+// proposal would have waited for. See agentBypassesReview for who gets here.
+//
+// The proposal row is still written and then marked published rather than being
+// skipped. That keeps ONE answer to "how does a proposed page become a page"
+// (insertProposedPageTx, shared with the human Publish path), and it leaves the
+// fact-review material and related-document candidates attached to a record
+// somebody can find afterwards.
+//
+// publishPageChangeProposal is deliberately untouched, including its refusal to
+// run for an API token: that refusal is what the browser review flow rests on,
+// and widening it here would have removed the gate rather than routed around it.
+func (s *Server) createPageUngated(u *user, input proposalInput) (pageChangeProposal, error) {
+	p, err := s.createPageProposal(u, input)
+	if err != nil {
+		return pageChangeProposal{}, err
+	}
+	if p.Kind != proposalKindCreate {
+		return pageChangeProposal{}, fmt.Errorf("create_page produced a %s proposal", p.Kind)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return pageChangeProposal{}, err
+	}
+	defer tx.Rollback()
+
+	ts := now()
+	pageID, content, err := s.insertProposedPageTx(tx, u, p, ts)
+	if err != nil {
+		return pageChangeProposal{}, err
+	}
+	// Same guarded UPDATE the human path uses: page_id IS NULL AND status =
+	// pending is what makes a double publish impossible, and it costs nothing to
+	// keep here.
+	if result, err := tx.Exec(`UPDATE page_change_proposals SET page_id = ?, status = ?, updated_at = ?, published_at = ?, published_by = ? WHERE id = ? AND page_id IS NULL AND status = ?`,
+		pageID, proposalStatusPublished, ts, ts, u.ID, p.ID, proposalStatusPending); err != nil {
+		return pageChangeProposal{}, err
+	} else if n, _ := result.RowsAffected(); n != 1 {
+		return pageChangeProposal{}, fmt.Errorf("proposal is no longer pending")
+	}
+	if err := tx.Commit(); err != nil {
+		return pageChangeProposal{}, err
+	}
+
+	p.PageID, p.ProposedContent = pageID, json.RawMessage(content)
+	p.Status, p.UpdatedAt, p.PublishedAt, p.PublishedBy = proposalStatusPublished, ts, &ts, &u.ID
+	s.healProposalIndex(pageID)
+	s.rowChanged(pageID)
+	s.fireWebhook("page.created", pageID)
+	s.pagesChanged()
+	return p, nil
+}
+
+// insertProposedPageTx turns a pending create proposal into a real page inside
+// an open transaction, and returns the new id together with the content that
+// was actually stored (related-document links are appended, so it is not the
+// content the proposal carried).
+func (s *Server) insertProposedPageTx(tx *sql.Tx, u *user, p pageChangeProposal, ts string) (string, string, error) {
+	if err := s.validateCreatePublishTx(tx, u, p); err != nil {
+		return "", "", err
+	}
+	content, err := appendRelatedPageLinks(p.ProposedContent, p.SelectedRelated)
+	if err != nil {
+		return "", "", err
+	}
+	var pos float64
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(position), 0) + 1 FROM pages WHERE parent_id IS ?`, nullIfEmptyPtr(p.TargetParentID)).Scan(&pos); err != nil {
+		return "", "", err
+	}
+	pageID := newID()
+	if _, err := tx.Exec(`INSERT INTO pages (id, parent_id, title, icon, cover, content, props, tags, description, position, created_at, updated_at, type, workspace_id, owner_id, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		pageID, nullIfEmptyPtr(p.TargetParentID), p.ProposedTitle, p.ProposedIcon, p.ProposedCover, content, string(p.ProposedProps), string(normalizeTags(p.ProposedTags)), p.ProposedDesc, pos, ts, ts, p.ProposedType, p.TargetWorkspace, u.ID, "workspace"); err != nil {
+		return "", "", err
+	}
+	return pageID, content, nil
+}
+
 func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (pageChangeProposal, error) {
 	if u == nil || u.TokenScope != "" {
 		return pageChangeProposal{}, fmt.Errorf("human session required to publish a proposal")
@@ -764,22 +911,11 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 	}
 	ts := now()
 	if p.Kind == proposalKindCreate {
-		if err := s.validateCreatePublishTx(tx, u, p); err != nil {
-			return pageChangeProposal{}, err
-		}
-		content, err := appendRelatedPageLinks(p.ProposedContent, p.SelectedRelated)
+		newPageID, content, err := s.insertProposedPageTx(tx, u, p, ts)
 		if err != nil {
 			return pageChangeProposal{}, err
 		}
-		var pos float64
-		if err := tx.QueryRow(`SELECT COALESCE(MAX(position), 0) + 1 FROM pages WHERE parent_id IS ?`, nullIfEmptyPtr(p.TargetParentID)).Scan(&pos); err != nil {
-			return pageChangeProposal{}, err
-		}
-		pageID = newID()
-		if _, err := tx.Exec(`INSERT INTO pages (id, parent_id, title, icon, cover, content, props, tags, description, position, created_at, updated_at, type, workspace_id, owner_id, visibility) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			pageID, nullIfEmptyPtr(p.TargetParentID), p.ProposedTitle, p.ProposedIcon, p.ProposedCover, content, string(p.ProposedProps), string(normalizeTags(p.ProposedTags)), p.ProposedDesc, pos, ts, ts, p.ProposedType, p.TargetWorkspace, u.ID, "workspace"); err != nil {
-			return pageChangeProposal{}, err
-		}
+		pageID = newPageID
 		if result, err := tx.Exec(`UPDATE page_change_proposals SET page_id = ?, status = ?, updated_at = ?, published_at = ?, published_by = ? WHERE id = ? AND page_id IS NULL AND status = ?`,
 			pageID, proposalStatusPublished, ts, ts, u.ID, proposalID, proposalStatusPending); err != nil {
 			return pageChangeProposal{}, err
@@ -788,31 +924,7 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 		}
 		p.PageID, p.ProposedContent = pageID, json.RawMessage(content)
 	} else {
-		if err := s.validateEditPublishTx(tx, u, pageID); err != nil {
-			return pageChangeProposal{}, err
-		}
-		var title, content, pageType, icon, cover, description, tags, props string
-		if err := tx.QueryRow(`SELECT title, content, type, icon, cover, description, tags, props FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&title, &content, &pageType, &icon, &cover, &description, &tags, &props); err == sql.ErrNoRows {
-			return pageChangeProposal{}, fmt.Errorf("page %q not found", pageID)
-		} else if err != nil {
-			return pageChangeProposal{}, err
-		}
-		currentHash := pageRevisionHash(title, content, pageType, icon, cover, description, tags, props)
-		legacyHash := strings.HasPrefix(p.BaseHash, "legacy-content:") && pageContentHash(title, content) == strings.TrimPrefix(p.BaseHash, "legacy-content:")
-		if currentHash != p.BaseHash && !legacyHash {
-			return pageChangeProposal{}, errProposalConflict
-		}
-		if _, err := tx.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)`, newID(), pageID, ts, u.ID, u.Name, title, content); err != nil {
-			return pageChangeProposal{}, err
-		}
-		if _, err := tx.Exec(`DELETE FROM page_revisions WHERE page_id = ? AND id NOT IN (SELECT id FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC LIMIT ?)`, pageID, pageID, revisionKeep); err != nil {
-			return pageChangeProposal{}, err
-		}
-		if legacyHash {
-			if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, pageID); err != nil {
-				return pageChangeProposal{}, err
-			}
-		} else if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ?, icon = ?, cover = ?, description = ?, tags = ?, props = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, p.ProposedIcon, p.ProposedCover, p.ProposedDesc, string(normalizeTags(p.ProposedTags)), string(p.ProposedProps), pageID); err != nil {
+		if err := s.applyProposedEditTx(tx, u, p, pageID, ts); err != nil {
 			return pageChangeProposal{}, err
 		}
 		if result, err := tx.Exec(`UPDATE page_change_proposals SET status = ?, updated_at = ?, published_at = ?, published_by = ? WHERE id = ? AND page_id = ? AND status = ?`, proposalStatusPublished, ts, ts, u.ID, proposalID, pageID, proposalStatusPending); err != nil {
@@ -837,6 +949,45 @@ func (s *Server) publishPageChangeProposal(pageID, proposalID string, u *user) (
 	s.pagesChanged()
 	s.audit("human", u.ID, u.Name, "proposal_published", pageID, s.pageWorkspace(pageID), proposalID)
 	return p, nil
+}
+
+// applyProposedEditTx writes a pending edit proposal onto its page inside an
+// open transaction: the page's current state becomes a revision, then the page
+// takes the proposed state. Shared by the human Publish path and the
+// workspace-admin bypass, so there is one answer to how a proposed revision
+// lands — including the base-hash check that refuses an edit built on a version
+// somebody has since moved on from.
+func (s *Server) applyProposedEditTx(tx *sql.Tx, u *user, p pageChangeProposal, pageID, ts string) error {
+	if err := s.validateEditPublishTx(tx, u, pageID); err != nil {
+		return err
+	}
+	var title, content, pageType, icon, cover, description, tags, props string
+	if err := tx.QueryRow(`SELECT title, content, type, icon, cover, description, tags, props FROM pages WHERE id = ? AND trashed_at IS NULL`, pageID).Scan(&title, &content, &pageType, &icon, &cover, &description, &tags, &props); err == sql.ErrNoRows {
+		return fmt.Errorf("page %q not found", pageID)
+	} else if err != nil {
+		return err
+	}
+	currentHash := pageRevisionHash(title, content, pageType, icon, cover, description, tags, props)
+	legacyHash := strings.HasPrefix(p.BaseHash, "legacy-content:") && pageContentHash(title, content) == strings.TrimPrefix(p.BaseHash, "legacy-content:")
+	if currentHash != p.BaseHash && !legacyHash {
+		return errProposalConflict
+	}
+	if _, err := tx.Exec(`INSERT INTO page_revisions (id, page_id, created_at, author_id, author_name, title, content) VALUES (?, ?, ?, ?, ?, ?, ?)`, newID(), pageID, ts, u.ID, u.Name, title, content); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM page_revisions WHERE page_id = ? AND id NOT IN (SELECT id FROM page_revisions WHERE page_id = ? ORDER BY created_at DESC LIMIT ?)`, pageID, pageID, revisionKeep); err != nil {
+		return err
+	}
+	if legacyHash {
+		if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, pageID); err != nil {
+			return err
+		}
+		return nil
+	}
+	if _, err := tx.Exec(`UPDATE pages SET title = ?, content = ?, updated_at = ?, icon = ?, cover = ?, description = ?, tags = ?, props = ? WHERE id = ?`, p.ProposedTitle, string(p.ProposedContent), ts, p.ProposedIcon, p.ProposedCover, p.ProposedDesc, string(normalizeTags(p.ProposedTags)), string(p.ProposedProps), pageID); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Server) validateEditPublishTx(tx *sql.Tx, u *user, pageID string) error {
@@ -1475,7 +1626,25 @@ func (s *Server) mcpCreatePageChangeProposal(u *user, pageID, content, title, su
 	if err != nil {
 		return "", err
 	}
-	s.audit("agent", u.ID, u.Name+" (MCP)", "proposal_created", pageID, s.pageWorkspace(pageID), p.Summary)
+	ws := s.pageWorkspace(pageID)
+	// Every MCP path that changes a document funnels through here — write_content
+	// replace, a title change, a revision restore, the proposals tool — so the
+	// bypass belongs here rather than repeated at four call sites where the fifth
+	// one would eventually be forgotten.
+	if s.agentBypassesReview(u.ID, ws) {
+		applied, applyErr := s.applyEditUngated(u, p)
+		if applyErr != nil {
+			return "", applyErr
+		}
+		s.audit("agent", u.ID, u.Name+" (MCP)", "page_updated", pageID, ws, applied.Summary)
+		payload, err := s.mcpProposalPayload(applied, "Applied directly: you are an admin of this workspace. The previous version is kept as a revision.")
+		if err != nil {
+			return "", err
+		}
+		b, err := json.Marshal(payload)
+		return string(b), err
+	}
+	s.audit("agent", u.ID, u.Name+" (MCP)", "proposal_created", pageID, ws, p.Summary)
 	payload, err := s.mcpProposalPayload(p, "Proposed revision created; awaiting human review. Canonical document remains unchanged until Publish.")
 	if err != nil {
 		return "", err

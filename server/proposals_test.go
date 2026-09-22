@@ -65,6 +65,20 @@ func TestLegacyProposalMigrationIsAtomicAndIdempotent(t *testing.T) {
 	}
 }
 
+// demoteToMember downgrades the caller's workspace role from the admin role
+// signedIn grants to plain "member". agentBypassesReview only fires for a
+// workspace admin, so any test whose subject is the review gate itself has to
+// run as a non-admin member, or the proposal it expects to stay pending gets
+// applied immediately instead.
+func (s *Server) demoteToMember(t *testing.T, ws, userID string) {
+	t.Helper()
+	if res, err := s.db.Exec(`UPDATE workspace_members SET role = 'member' WHERE workspace_id = ? AND user_id = ?`, ws, userID); err != nil {
+		t.Fatalf("demote to member: %v", err)
+	} else if n, _ := res.RowsAffected(); n != 1 {
+		t.Fatalf("demote to member: expected 1 row, affected %d", n)
+	}
+}
+
 func proposalID(t *testing.T, s *Server, pageID string) string {
 	t.Helper()
 	var id string
@@ -197,8 +211,9 @@ func TestMCPProposalResultLinksWidgetAndKeepsHumanApprovalOutOfMCP(t *testing.T)
 	// Given
 	s := testServer(t)
 	uid, _ := signedIn(t, s, "proposal-mcp-widget@example.test")
-	token := proposalMCPToken(t, s, uid)
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
+	token := proposalMCPToken(t, s, uid)
 	page := s.makePage(t, ws, uid, "", "BRD", `[{"type":"paragraph","content":[{"type":"text","text":"canonical"}]}]`)
 
 	// When
@@ -253,12 +268,13 @@ func TestMCPProposalResultLinksWidgetAndKeepsHumanApprovalOutOfMCP(t *testing.T)
 	}
 }
 
-func TestMCPCreatePageCreatesProposalBeforeCanonicalPage(t *testing.T) {
+func TestMCPCreatePageCreatesProposalBeforeCanonicalPageForNonAdmin(t *testing.T) {
 	// Given
 	s := testServer(t)
 	uid, _ := signedIn(t, s, "proposal-create@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	var before int
 	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages`).Scan(&before); err != nil {
 		t.Fatal(err)
@@ -309,6 +325,7 @@ func TestCreateProposalReviewPublishesWithGapsAndSelectedRelatedLinks(t *testing
 	uid, cookie := signedIn(t, s, "proposal-create-review@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	related := s.makePage(t, ws, uid, "", "Related source", `{}`)
 	unchecked := s.makePage(t, ws, uid, "", "Unchecked source", `{}`)
 	review := `{"constraints":[{"id":"acceptance_criteria","label":"Acceptance Criteria","required":5}],"facts":[{"id":"ac-1","constraintId":"acceptance_criteria","label":"AC-1","value":"One","category":"provided"},{"id":"ac-2","constraintId":"acceptance_criteria","label":"AC-2","value":"Two","category":"provided"},{"id":"ac-3","constraintId":"acceptance_criteria","label":"AC-3","value":"Three","category":"provided"}]}`
@@ -432,6 +449,7 @@ func TestAgentFactClaimsCannotBecomeDeterministicWithoutHumanConfirmation(t *tes
 	uid, cookie := signedIn(t, s, "proposal-trust-boundary@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	facts := []map[string]any{}
 	for i := 1; i <= 5; i++ {
 		facts = append(facts, map[string]any{
@@ -502,6 +520,7 @@ func TestCreateProposalsUnderSameParentRemainPendingTogether(t *testing.T) {
 	uid, _ := signedIn(t, s, "proposal-coexist@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	parent := s.makePage(t, ws, uid, "", "Parent", `{}`)
 	for _, title := range []string{"First pending", "Second pending"} {
 		if _, err := callTool(t, s, u, "create_page", `{"title":"`+title+`","workspace_id":"`+ws+`","parent_id":"`+parent+`"}`); err != nil {
@@ -522,6 +541,7 @@ func TestHumanProposalEditPreservesStructuredBlocks(t *testing.T) {
 	uid, cookie := signedIn(t, s, "proposal-structure@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Structured", `{}`)
 	original := `[{"id":"heading-1","type":"heading","props":{"level":1},"content":[{"type":"text","text":"Original heading","styles":{}}]},{"id":"list-1","type":"bulletListItem","props":{},"content":[{"type":"text","text":"Original item","styles":{}}]},{"id":"paragraph-1","type":"paragraph","props":{},"content":[{"type":"text","text":"Original paragraph","styles":{}}]}]`
 	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, original, page); err != nil {
@@ -579,6 +599,7 @@ func TestEditProposalStaleMetadataCannotBeOverwritten(t *testing.T) {
 	uid, cookie := signedIn(t, s, "proposal-stale-metadata@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Metadata race", `{}`)
 	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"new body","mode":"replace"}`); err != nil {
 		t.Fatal(err)
@@ -642,6 +663,7 @@ func TestCreateProposalRejectAndAgentApprovalAreSafe(t *testing.T) {
 	uid, cookie := signedIn(t, s, "proposal-create-reject@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	result, err := callTool(t, s, u, "create_page", `{"title":"Rejected canonical","workspace_id":"`+ws+`"}`)
 	if err != nil {
 		t.Fatal(err)
@@ -685,6 +707,7 @@ func TestHumanEditingEditProposalPreservesBaseHashAndStaleProtection(t *testing.
 	uid, cookie := signedIn(t, s, "proposal-edit-workspace@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Canonical", `{}`)
 	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, `[ {"type":"paragraph","content":[{"type":"text","text":"old"}]} ]`, page); err != nil {
 		t.Fatal(err)
@@ -727,6 +750,7 @@ func TestMCPReplaceContentCreatesProposalWithoutCanonicalSideEffects(t *testing.
 	uid, _ := signedIn(t, s, "proposal-agent@example.test")
 	u := &user{ID: uid, Name: "Proposal Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "BRD", `{}`)
 	if _, err := s.db.Exec(`UPDATE pages SET content = ?, updated_at = ? WHERE id = ?`, `[ {"type":"paragraph","content":[{"type":"text","text":"old"}]} ]`, now(), page); err != nil {
 		t.Fatal(err)
@@ -826,6 +850,7 @@ func TestProposalPublishRejectsStaleBaseWithoutOverwrite(t *testing.T) {
 	uid, cookie := signedIn(t, s, "proposal-stale@example.test")
 	u := &user{ID: uid, Name: "Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Doc", `{}`)
 	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"agent version","mode":"replace"}`); err != nil {
 		t.Fatal(err)
@@ -857,6 +882,7 @@ func TestProposalRejectAndApprovalAuthorization(t *testing.T) {
 	uid, cookie := signedIn(t, s, "proposal-auth@example.test")
 	u := &user{ID: uid, Name: "Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Doc", `{}`)
 	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"pending","mode":"replace"}`); err != nil {
 		t.Fatal(err)
@@ -916,6 +942,7 @@ func TestProposalMCPReadListAndCrossPageIDProtection(t *testing.T) {
 	uid, cookie := signedIn(t, s, "proposal-list@example.test")
 	u := &user{ID: uid, Name: "Agent", TokenScope: "write", TokenKind: tokenKindAPI}
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
 	page := s.makePage(t, ws, uid, "", "Doc", `{}`)
 	other := s.makePage(t, ws, uid, "", "Other", `{}`)
 	if _, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"proposal body","mode":"replace"}`); err != nil {
@@ -991,8 +1018,9 @@ func TestProposalToolAdvertisesStructuredOutputContract(t *testing.T) {
 func TestMCPCreatePageReturnsStructuredProposalAndReviewLinkContract(t *testing.T) {
 	s := testServer(t)
 	uid, _ := signedIn(t, s, "proposal-mcp-create@example.test")
-	token := proposalMCPToken(t, s, uid)
 	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
+	token := proposalMCPToken(t, s, uid)
 	rec := mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_page","arguments":{"title":"MCP create","workspace_id":"`+ws+`","markdown":"draft"}}}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("MCP create_page: %d %s", rec.Code, rec.Body.String())
@@ -1064,5 +1092,143 @@ func TestProposalReadsHideCandidateThatLosesReadPermission(t *testing.T) {
 	}
 	if len(visible.Related) != 0 || len(visible.SelectedRelated) != 0 || strings.Contains(string(visible.OriginalSnapshot), candidate) {
 		t.Fatalf("inaccessible candidate leaked through proposal: %#v", visible.Related)
+	}
+}
+
+// The bypass in agentBypassesReview: a workspace admin's create_page must
+// produce a real, indexed page immediately — no pending proposal in the way.
+func TestWorkspaceAdminCreatePageBypassesReviewAndIndexesImmediately(t *testing.T) {
+	// Given: signedIn makes uid an admin of its own (only) workspace, which is
+	// exactly the case agentBypassesReview fires for.
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "proposal-admin-create@example.test")
+	token := proposalMCPToken(t, s, uid)
+	ws := s.firstWorkspaceOf(t, uid)
+
+	// When
+	rec := mcpRequest(t, s, token, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_page","arguments":{"title":"Admin-created page","workspace_id":"`+ws+`","markdown":"admin draft"}}}`)
+
+	// Then
+	result := mcpResult(t, rec)
+	structured, ok := result["structuredContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("admin create_page result had no structuredContent: %#v", result)
+	}
+	proposal, ok := structured["proposal"].(map[string]any)
+	if !ok || proposal["kind"] != proposalKindCreate || proposal["status"] != proposalStatusPublished {
+		t.Fatalf("admin create proposal = %#v", proposal)
+	}
+	pageID, _ := structured["pageId"].(string)
+	if pageID == "" {
+		t.Fatalf("admin create_page did not return a canonical page id: %#v", structured)
+	}
+	var title string
+	if err := s.db.QueryRow(`SELECT title FROM pages WHERE id = ?`, pageID).Scan(&title); err != nil || title != "Admin-created page" {
+		t.Fatalf("admin create_page did not create the canonical page immediately: %q, %v", title, err)
+	}
+	var indexed int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages_fts WHERE id = ?`, pageID).Scan(&indexed); err != nil || indexed != 1 {
+		t.Fatalf("admin create_page did not index the page immediately: %d, %v", indexed, err)
+	}
+	content := result["content"].([]any)[0].(map[string]any)["text"].(string)
+	if !strings.Contains(content, "you are an admin of this workspace") || strings.Contains(content, "awaiting human review") {
+		t.Fatalf("admin create_page message did not describe the bypass: %s", content)
+	}
+}
+
+// The other half of the bypass: an admin's write_content replace must update
+// the page immediately, and still leave the previous version behind as a
+// page_revisions row — publish and bypass share one write path for exactly
+// this reason.
+func TestWorkspaceAdminReplaceContentAppliesImmediatelyAndKeepsRevision(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "proposal-admin-replace@example.test")
+	u := &user{ID: uid, Name: "Admin Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	ws := s.firstWorkspaceOf(t, uid)
+	page := s.makePage(t, ws, uid, "", "Admin doc", `{}`)
+	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, `[{"type":"paragraph","content":[{"type":"text","text":"before"}]}]`, page); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	message, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"after","mode":"replace"}`)
+
+	// Then
+	if err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+	if !strings.Contains(message, "Applied directly") || strings.Contains(message, "awaiting human review") {
+		t.Fatalf("admin replace message did not describe the bypass: %s", message)
+	}
+	var content string
+	if err := s.db.QueryRow(`SELECT content FROM pages WHERE id = ?`, page).Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(content, "after") {
+		t.Fatalf("admin replace did not update the canonical page immediately: %q", content)
+	}
+	var revisions int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM page_revisions WHERE page_id = ? AND content LIKE '%before%'`, page).Scan(&revisions); err != nil {
+		t.Fatal(err)
+	}
+	if revisions != 1 {
+		t.Fatalf("admin replace did not keep the previous version as a revision: %d", revisions)
+	}
+	var status string
+	if err := s.db.QueryRow(`SELECT status FROM page_change_proposals WHERE page_id = ?`, page).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != proposalStatusPublished {
+		t.Fatalf("admin replace proposal status = %q", status)
+	}
+}
+
+// The control case for both bypass tests above: a non-admin member gets the
+// same pending-proposal behavior the whole gate used to guarantee for
+// everyone.
+func TestNonAdminMemberCreateAndReplaceStayPendingForReview(t *testing.T) {
+	// Given
+	s := testServer(t)
+	uid, _ := signedIn(t, s, "proposal-member-gate@example.test")
+	u := &user{ID: uid, Name: "Member Agent", TokenScope: "write", TokenKind: tokenKindAPI}
+	ws := s.firstWorkspaceOf(t, uid)
+	s.demoteToMember(t, ws, uid)
+
+	// When: create_page
+	created, err := callTool(t, s, u, "create_page", `{"title":"Member-created page","workspace_id":"`+ws+`","markdown":"member draft"}`)
+	if err != nil {
+		t.Fatalf("create_page: %v", err)
+	}
+
+	// Then
+	if !strings.Contains(created, "awaiting human review") {
+		t.Fatalf("member create_page bypassed review: %s", created)
+	}
+	var pages int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM pages WHERE title = 'Member-created page'`).Scan(&pages); err != nil || pages != 0 {
+		t.Fatalf("member create_page created a canonical page: %d, %v", pages, err)
+	}
+
+	// When: write_content replace
+	page := s.makePage(t, ws, uid, "", "Member doc", `{}`)
+	if _, err := s.db.Exec(`UPDATE pages SET content = ? WHERE id = ?`, `[{"type":"paragraph","content":[{"type":"text","text":"before"}]}]`, page); err != nil {
+		t.Fatal(err)
+	}
+	message, err := callTool(t, s, u, "write_content", `{"page_id":"`+page+`","markdown":"after","mode":"replace"}`)
+	if err != nil {
+		t.Fatalf("write_content: %v", err)
+	}
+
+	// Then
+	if !strings.Contains(message, "awaiting human review") {
+		t.Fatalf("member replace bypassed review: %s", message)
+	}
+	var content string
+	if err := s.db.QueryRow(`SELECT content FROM pages WHERE id = ?`, page).Scan(&content); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(content, "after") {
+		t.Fatalf("member replace applied immediately: %q", content)
 	}
 }
