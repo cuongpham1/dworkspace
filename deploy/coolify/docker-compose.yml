@@ -37,18 +37,27 @@ services:
     # upload succeeds. In nested setups (Docker inside LXC) neither the cgroup
     # nor /proc/meminfo tells the truth; use DWORKSPACE_MEMORY_MB there.
     mem_limit: 4g
+    # Coolify reads only the NAMES here; the values come from its own secret
+    # store (Settings → Secrets on the application). A name listed here with no
+    # secret behind it is passed to Docker bare, which does not set it — and,
+    # worse, REPLACES whatever the image's ENV had for it.
+    #
+    # That is why DWORKSPACE_ADDR and DWORKSPACE_DATA are deliberately absent:
+    # the Dockerfile already sets them to :8420 and /data, and naming them here
+    # only unset them. The instance survived that because the runtime image has
+    # no WORKDIR, so the fallback "./data" happened to resolve to /data — a
+    # coincidence, not a design, and one that ends the day anyone adds a
+    # WORKDIR. Leave them to the image.
     environment:
-      DWORKSPACE_ADDR: ":8420"
-      DWORKSPACE_DATA: "/data"
       # Where this instance tells the world it lives: share links, invites,
       # OAuth redirect URIs and MCP addresses are all built from it.
       #
-      # It belongs here rather than in the admin UI because the UI writes it to
-      # the database, and the database travels inside a backup — restoring one
-      # instance onto another silently points every link at the machine the
-      # backup came from. This value belongs to the deployment, so it lives with
-      # the deployment. It overrides whatever the database holds.
-      DWORKSPACE_PUBLIC_BASE_URL: "https://vuonuom.dworkspaces.workers.dev"
+      # Declared here so Coolify shows the field; SET THE VALUE IN COOLIFY.
+      # It has to come from the deployment rather than the admin UI, because the
+      # UI writes it to the database and the database travels inside a backup —
+      # restoring one instance onto another silently points every link at the
+      # machine the backup came from.
+      - DWORKSPACE_PUBLIC_BASE_URL
       # DWORKSPACE_MEMORY_MB: "4096"
       # TLS is terminated by Coolify's proxy, so the container serves plain
       # HTTP. Only set DWORKSPACE_TLS_CERT/KEY if you bypass that proxy.
