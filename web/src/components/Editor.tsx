@@ -200,7 +200,53 @@ export default function Editor(props: EditorProps) {
       </div>
     );
   }
-  if (!page) return <div className="editor-loading" />;
+  // Navigating used to blank the whole column: this returned an empty box, and
+  // App keys the editor on the page id, so the old page is unmounted the moment
+  // a new one is clicked and there is nothing left to look at until the fetch
+  // lands. Even at 150ms that reads as a flicker rather than as loading.
+  //
+  // The icon and title are not guessed — the page being opened is already in
+  // the sidebar's data, which is how the tree drew the row that was clicked.
+  // Drawing them at once means the heading never disappears and only the body,
+  // the part that genuinely has to be fetched, is replaced.
+  if (!page) {
+    const known = props.pagesById.get(props.pageId);
+    return (
+      <div className="editor-page editor-page-loading">
+        {/* An empty topbar, for its height alone. Without it the title sits
+            where the topbar would be and then drops by its full height the
+            moment the page lands — a jump, which is worse than the flicker
+            this is here to remove. The real class rather than a copy of its
+            height, so it keeps following --topbar-h. */}
+        <div className="topbar" />
+        {/* The real page's own three wrappers, in their own order: the icon row
+            sits OUTSIDE .page-head so it can dock, the title is in .page-head,
+            and the blocks are in .editor-inner. Borrowing the classes rather
+            than approximating their metrics is what keeps the title landing on
+            the same pixel when the fetch returns — measured, because a first
+            attempt that put everything in .editor-inner moved it by 16px. */}
+        <div className="page-body">
+          <div className="page-icon-row">
+            {known?.icon && <PageIcon icon={known.icon} size={28} />}
+          </div>
+          <div className="page-head">
+            {known ? (
+              <div className="skeleton-title">{known.title || t('Untitled')}</div>
+            ) : (
+              // Reached by a deep link to a page no loaded scope has seen, where
+              // there is genuinely nothing to show but the shape of one.
+              <div className="sk-bar sk-bar-title" />
+            )}
+          </div>
+          <div className="editor-inner editor-inner-skeleton">
+            <div className="sk-bar" />
+            <div className="sk-bar" />
+            <div className="sk-bar sk-bar-short" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // A database carries no comments — its ROWS do, and each of those is a page
   // with its own panel. Suppressing the panel alone was not enough: the button

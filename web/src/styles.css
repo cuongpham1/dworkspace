@@ -1130,6 +1130,112 @@ button {
   flex: 1;
 }
 
+/* What is on screen while a page is being fetched.
+
+   Deliberately built from .editor-inner rather than centred in the column: the
+   placeholder has to sit exactly where the real text will, or the content
+   jumps sideways the instant it arrives and the fade-in below draws attention
+   to the jump instead of hiding the wait. */
+/* Every value here is .page-title's, because this stands exactly where the
+   textarea will and any difference between them is a jump at the moment the
+   page arrives. */
+.skeleton-title {
+  width: 100%;
+  color: var(--fg);
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding: 10px 0 12px;
+  font-family: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* .editor-inner is a flex item with `margin: 0 auto`, and an auto margin on the
+   cross axis switches off the stretch it would otherwise get — so it is as wide
+   as its contents. On a real page that is the editor; here the bars have no
+   width of their own, and without this the whole column collapsed to its own
+   112px of padding and nothing was visible at all. .page-head states its width
+   for the same reason. */
+.editor-inner-skeleton {
+  width: 100%;
+}
+
+.sk-bar {
+  height: 15px;
+  margin: 14px 0;
+  border-radius: 6px;
+  background: var(--border);
+  /* Sweeps left to right so the wait reads as work in progress. Slow and
+     low-contrast on purpose: this is on screen for a fraction of a second on a
+     good connection, and a bright animation in that time is a flash of its
+     own. */
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--fg) 7%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 260px 100%;
+  background-repeat: no-repeat;
+  animation: sk-sweep 1.3s ease-in-out infinite;
+}
+
+/* Stands in for the heading when even the title is unknown — a deep link to a
+   page no loaded scope has seen. */
+.sk-bar-title {
+  height: 38px;
+  width: 58%;
+  margin: 14px 0 26px;
+}
+
+.sk-bar-short {
+  width: 62%;
+}
+
+@keyframes sk-sweep {
+  from {
+    background-position: -260px 0;
+  }
+  to {
+    background-position: calc(100% + 260px) 0;
+  }
+}
+
+/* The arrival. Short: a long fade turns every navigation into something you
+   wait through, which is the opposite of the point.
+
+   Opacity only, no transform. .page-body is the scroller that the comment
+   column renders inside without scrolling along (see .editor-page), and that
+   rests on the column's containing block sitting OUTSIDE it — a transform here
+   would make .page-body the containing block for the length of the animation
+   and drag the column into the scroll.
+
+   Excluded on the placeholder, which is itself an .editor-page: without that
+   a fast navigation fades twice, once into the skeleton and once out of it. */
+.editor-page:not(.editor-page-loading) .page-body {
+  animation: page-in 160ms ease-out;
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-bar {
+    animation: none;
+  }
+  .editor-page:not(.editor-page-loading) .page-body {
+    animation: none;
+  }
+}
+
 .editor-error {
   flex: 1;
   display: flex;
