@@ -17,7 +17,7 @@ var documentProposalViewHTML string
 // to the request Host header would let an untrusted MCP caller turn the human
 // handoff into an attacker-controlled link.
 func (s *Server) mcpReviewURL(path string) string {
-	base := s.setting("public_base_url", "")
+	base := s.publicBaseSetting()
 	if base == "" {
 		if domain, enabled := s.PublicHTTPSConfig(); enabled && domain != "" {
 			base = "https://" + strings.TrimRight(domain, "/")

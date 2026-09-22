@@ -58,7 +58,7 @@ func (s *Server) handleMailOAuthStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The same canonicalisation hop as the login (the cookie is host-scoped).
-	if base := s.setting("public_base_url", ""); base != "" {
+	if base := s.publicBaseSetting(); base != "" {
 		if u, err := url.Parse(base); err == nil && u.Host != "" && u.Host != r.Host {
 			http.Redirect(w, r, strings.TrimRight(base, "/")+"/api/admin/mail-oauth/"+pname+"/start", http.StatusFound)
 			return

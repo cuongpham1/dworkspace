@@ -30,6 +30,30 @@ func (s *Server) setting(key, fallback string) string {
 	return fallback
 }
 
+// publicBaseSetting is the configured external base URL, with the environment
+// winning over the database.
+//
+// The database is the right home for a setting an admin owns, and wrong for one
+// the DEPLOYMENT owns — and this is the second kind. It travels inside a
+// backup: restore one instance's data onto another machine and every share
+// link, invite, OAuth redirect and MCP address silently names the machine the
+// backup came from. Nothing appears broken, because the app is answering
+// normally; it is only pointing everybody somewhere else, usually somewhere
+// already dead. An environment variable belongs to the container rather than to
+// the data, so restoring a backup can no longer move where the instance claims
+// to live.
+//
+// Set DWORKSPACE_PUBLIC_BASE_URL to pin it. When it is unset the stored value
+// is used exactly as before, so nothing changes for an install that never sets
+// it. The stored value is kept rather than cleared: it is the fallback if the
+// variable is ever removed.
+func (s *Server) publicBaseSetting() string {
+	if u := Env("PUBLIC_BASE_URL"); u != "" {
+		return u
+	}
+	return s.setting("public_base_url", "")
+}
+
 func (s *Server) setSetting(key, value string) {
 	s.db.Exec(`INSERT INTO app_settings (key, value) VALUES (?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
@@ -159,7 +183,7 @@ func (s *Server) loadSettings() appSettings {
 		SMTPUser:            s.setting("smtp_user", ""),
 		SMTPFrom:            s.setting("smtp_from", ""),
 		SMTPPassSet:         s.setting("smtp_pass", "") != "",
-		PublicBaseURL:       s.setting("public_base_url", ""),
+		PublicBaseURL:       s.publicBaseSetting(),
 		TrustProxy:          s.boolSetting("trust_proxy"),
 		MaxUploadMB:         s.intSetting("max_upload_mb", 50, 1, 2048),
 		TrashDays:           s.trashRetentionDays(),
@@ -350,7 +374,7 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 // ---- email ----
 
 func (s *Server) baseURL(r *http.Request) string {
-	if u := s.setting("public_base_url", ""); u != "" {
+	if u := s.publicBaseSetting(); u != "" {
 		return strings.TrimRight(u, "/")
 	}
 	proto := "http"
@@ -374,7 +398,7 @@ func (s *Server) handlePublicBase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) publicShareBase(r *http.Request) string {
-	if u := s.setting("public_base_url", ""); u != "" {
+	if u := s.publicBaseSetting(); u != "" {
 		return strings.TrimRight(u, "/")
 	}
 	if domain, enabled := s.PublicHTTPSConfig(); enabled && domain != "" {

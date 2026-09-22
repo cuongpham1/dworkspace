@@ -147,7 +147,7 @@ func (s *Server) handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 	// and the registered redirect URI must match). If a public base URL is
 	// configured and the user is browsing via LAN IP / tunnel alias, hop to
 	// the canonical origin first.
-	if base := s.setting("public_base_url", ""); base != "" {
+	if base := s.publicBaseSetting(); base != "" {
 		if u, err := url.Parse(base); err == nil && u.Host != "" && u.Host != s.effectiveHost(r) {
 			http.Redirect(w, r, strings.TrimRight(base, "/")+"/api/oauth/"+pname+"/start", http.StatusFound)
 			return
