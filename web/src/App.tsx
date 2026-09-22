@@ -259,13 +259,45 @@ export default function App() {
   // Pages reload on SSE events; favorites are per-user and reloaded only on
   // login/mount, so a page-change broadcast can't clobber an in-flight
   // optimistic favorite toggle.
-  const loadPages = useCallback(async () => {
-    try {
-      setPages(await api.listPages());
-      setLoadError(false);
-    } catch (e) {
-      if ((e as Error).message !== 'unauthorized') setLoadError(true);
+  //
+  // Three independent paths ask for the tree as the app starts — the mount
+  // below, the EventSource's onopen, and the visibility/focus listener — and
+  // they all fire within a few hundred milliseconds of each other. Each answer
+  // is the whole tree, so that was the same large response fetched three times
+  // in parallel before anybody had seen anything.
+  //
+  // Coalescing, not debouncing: a caller that arrives mid-flight joins the
+  // request already running instead of waiting out a timer, so the callers
+  // that `await loadPages()` after a mutation still resolve when the data is
+  // in. It cannot drop an update either — a request arriving while one is in
+  // flight may have been triggered by a change that request is already too
+  // late to see, so it sets `again` and the loop fetches once more.
+  const inFlight = useRef<Promise<void> | null>(null);
+  const loadAgain = useRef(false);
+
+  const loadPages = useCallback((): Promise<void> => {
+    if (inFlight.current) {
+      loadAgain.current = true;
+      return inFlight.current;
     }
+    const run = (async () => {
+      try {
+        do {
+          loadAgain.current = false;
+          try {
+            setPages(await api.listPages());
+            setLoadError(false);
+          } catch (e) {
+            if ((e as Error).message !== 'unauthorized') setLoadError(true);
+            break; // a failed load must not spin on `again`
+          }
+        } while (loadAgain.current);
+      } finally {
+        inFlight.current = null;
+      }
+    })();
+    inFlight.current = run;
+    return run;
   }, []);
 
   const loadWorkspaces = useCallback(async () => {

@@ -18,8 +18,12 @@ import (
 )
 
 type Server struct {
-	db      *sql.DB
-	mux     *http.ServeMux
+	db  *sql.DB
+	mux *http.ServeMux
+	// mux wrapped in the middleware every request passes through, built once
+	// rather than per request. ServeHTTP serves this, not mux — a test that
+	// reaches for mux directly gets the routes without the wrapping.
+	handler http.Handler
 	dataDir string
 	// name → the markup INSIDE a Lucide <svg>, for the print view.
 	lucide map[string]string
@@ -417,11 +421,12 @@ func New(dataDir string, dist fs.FS) (*Server, error) {
 	}))
 
 	m.Handle("/", spaHandler(dist))
+	s.handler = compress(m)
 	return s, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r)
+	s.handler.ServeHTTP(w, r)
 }
 
 func newID() string {
